@@ -2,6 +2,7 @@ package org.example.project
 
 import LoginRequest
 import LoginResponse
+import UserCredentials
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
@@ -11,6 +12,7 @@ import io.ktor.server.routing.*
 import io.ktor.serialization.kotlinx.json.*
 import com.auth0.jwt.*
 import com.auth0.jwt.algorithms.Algorithm
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.HttpStatusCode.Companion.Unauthorized
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.authenticate
@@ -18,6 +20,7 @@ import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.jwt.jwt
 import io.ktor.server.auth.principal
 import io.ktor.server.request.receive
+import kotlinx.serialization.json.Json
 import java.util.Date
 
 fun main() {
@@ -27,7 +30,11 @@ fun main() {
 
 fun Application.module() {
     install(ContentNegotiation) {
-        json()
+        json(Json{
+            ignoreUnknownKeys = true
+            prettyPrint = true
+            isLenient = true
+        })
     }
 
     val jwtSecret = "secret"
@@ -64,12 +71,12 @@ fun Application.module() {
 
     routing {
         post("/login") {
-            val login = call.receive<LoginRequest>()
-            if (login.username == "user" && login.password == "password") {
-                val token = generateToken(login.username)
+            val request = call.receive<UserCredentials>()
+            if (validateUser(request.username, request.password)) {
+                val token = generateToken(request.username)
                 call.respond(LoginResponse(token))
             } else {
-                call.respondText("Invalid credentials",status = Unauthorized)
+                call.respond(HttpStatusCode.Unauthorized, "Invalid credentials")
             }
         }
 
@@ -78,6 +85,16 @@ fun Application.module() {
                 val principal = call.principal<JWTPrincipal>()
                 val username = principal!!.payload.getClaim("username").asString()
                 call.respondText("Hello, $username! this is a protected route")
+            }
+        }
+
+        post("/register") {
+            val request = call.receive<UserCredentials>()
+            if (userExists(request.username)) {
+                call.respond(HttpStatusCode.Conflict,"User already exists")
+            }else {
+                createUser(request.username,request.password)
+                call.respond(HttpStatusCode.OK,"User created successfully")
             }
         }
     }

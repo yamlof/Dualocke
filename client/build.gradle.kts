@@ -33,6 +33,11 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(projects.core)
+            implementation(kotlin("stdlib")) // gives you String, Unit, etc.
+
+            implementation(project(":core"))
+
+
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -40,6 +45,12 @@ kotlin {
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
+            implementation(project(":core"))
+            val ktor_version = "3.3.1"
+            implementation("io.ktor:ktor-client-core:${ktor_version}")
+            implementation("io.ktor:ktor-client-cio:${ktor_version}")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:${ktor_version}")
+            implementation("io.ktor:ktor-client-content-negotiation:${ktor_version}")
         }
     }
 }

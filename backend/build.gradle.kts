@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.kotlinJvm)
     alias(libs.plugins.ktor)
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20" // match your Kotlin version
+
     application
 }
 
@@ -30,4 +32,6 @@ dependencies {
     val ktor_version = "3.3.1"
     implementation("io.ktor:ktor-server-auth:${ktor_version}")
     implementation("io.ktor:ktor-server-auth-jwt:${ktor_version}")
+    implementation("org.mindrot:jbcrypt:0.4")
+
 }

@@ -527,7 +527,6 @@ function detectGame()
     end
 end
 
--- Add this function to format party data for transmission
 function formatPartyForSocket(game)
     local party = game:getParty()
     local msg = "PARTY_UPDATE\n"
@@ -566,7 +565,7 @@ if emu then
 end
 
 
-
+-- Server
 lastkeys = nil
 server = nil
 ST_sockets = {}

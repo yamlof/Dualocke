@@ -32,7 +32,8 @@ fun createUser(username: String, password: String) {
     } else {
         mutableListOf()
     }
-    list.add(UserCredentials(username, password))
+    val hashedPassword = hashPassword(password)
+    list.add(UserCredentials(username, hashedPassword))
     userFile.writeText(Json.encodeToString(list))
 }
 

@@ -2,30 +2,27 @@ package org.example.project
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Button
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.material.TextField
-import androidx.compose.material.rememberBottomSheetState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
 import loadToken
 import login
 import register
 import saveToken
-import kotlin.math.log
 
 fun main() = application {
     Window(
@@ -41,13 +38,19 @@ fun main() = application {
             var isRegistering = remember { mutableStateOf(false) }
 
 
+
+
+
             val scope = rememberCoroutineScope() // Proper lifecycle management
 
 
             if (!loggedIn.value) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
 
                     Text(
@@ -64,7 +67,7 @@ fun main() = application {
                         value = password.value,
                         onValueChange = { password.value = it },
                         label = { Text("Password") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
                     )
 
                     Button(
@@ -101,15 +104,14 @@ fun main() = application {
                     if (message.value.isNotBlank()) Text(message.value)
                 }
             } else{
-                Column {
-                    Text("You are logged in")
-                    Button(onClick = {
+                HomeScreen(
+                    onLogout = {
                         saveToken("")
+                        username.value = ""
+                        password.value = ""
                         loggedIn.value = false
-                    }){
-                        Text("Logout")
                     }
-                }
+                )
             }
         }
     }

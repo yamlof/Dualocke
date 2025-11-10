@@ -1,5 +1,6 @@
 package org.example.project
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,13 +10,18 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.material.TextField
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -23,12 +29,35 @@ import loadToken
 import login
 import register
 import saveToken
+import java.nio.ByteBuffer
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.painter.*
+import kotlinx.coroutines.withContext
+
 
 fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "KotlinProject",
     ) {
+
+        var frame by remember { mutableStateOf<ByteBuffer?>(null) }
+
+        LaunchedEffect(Unit) {
+            withContext(Dispatchers.Default) {
+                MgbaBridge.init()
+                MgbaBridge.loadRom("/Users/edwinigbinoba/Documents/code/Dualocke/client/resources/roms/Pokemon - FireRed Version (USA, Europe) (Rev 1).gba")
+                while (true) {
+                    MgbaBridge.step()
+                    frame = MgbaBridge.getFramebuffer()
+                }
+            }
+        }
+
+        frame?.let { GbaScreen(it) }
+
+        /*
         MaterialTheme{
             var username = remember{ mutableStateOf("") }
             var password = remember{mutableStateOf("")}
@@ -113,6 +142,6 @@ fun main() = application {
                     }
                 )
             }
-        }
+        }*/
     }
-}
+    }

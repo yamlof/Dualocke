@@ -1,0 +1,1 @@
+/usr/bin/cc  -arch arm64 -dynamiclib -Wl,-headerpad_max_install_names -o libmgba_jni.dylib -install_name @rpath/libmgba_jni.dylib CMakeFiles/mgba_jni.dir/EmulatorBridge.c.o  -Wl,-rpath,/Users/edwinigbinoba/Documents/code/Dualocke/jni/mgba/build /Users/edwinigbinoba/Documents/code/Dualocke/jni/mgba/build/libmgba.dylib

@@ -46,6 +46,8 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
             implementation(project(":core"))
+            implementation(kotlin("stdlib"))
+
             val ktor_version = "3.3.1"
             implementation("io.ktor:ktor-client-core:${ktor_version}")
             implementation("io.ktor:ktor-client-cio:${ktor_version}")

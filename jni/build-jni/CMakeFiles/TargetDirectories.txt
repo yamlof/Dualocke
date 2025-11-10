@@ -1,0 +1,3 @@
+/Users/edwinigbinoba/Documents/code/Dualocke/jni/build-jni/CMakeFiles/mgba_jni.dir
+/Users/edwinigbinoba/Documents/code/Dualocke/jni/build-jni/CMakeFiles/edit_cache.dir
+/Users/edwinigbinoba/Documents/code/Dualocke/jni/build-jni/CMakeFiles/rebuild_cache.dir

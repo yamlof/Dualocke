@@ -12,17 +12,7 @@ import java.nio.ByteBuffer
 import java.nio.IntBuffer
 
 
-object MgbaBridge {
-    init {
-        // Load your native library
-        System.loadLibrary("mgba_jni") // looks for libmgba_jni.so/.dylib/.dll
-    }
 
-    external fun init()
-    external fun loadRom(path: String)
-    external fun step()
-    external fun getFramebuffer(): java.nio.ByteBuffer
-}
 
 
 @Composable

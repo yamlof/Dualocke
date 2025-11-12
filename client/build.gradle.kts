@@ -57,6 +57,9 @@ kotlin {
     }
 }
 
+tasks.withType<JavaExec> {
+    systemProperty("java.library.path", "$rootDir/jni")
+}
 
 compose.desktop {
     application {

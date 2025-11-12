@@ -1,10 +1,10 @@
-object MgbaBridge {
+class MgbaWrapper {
     init {
-        System.loadLibrary("/Users/edwinigbinoba/Documents/code/Dualocke/jni/mgba/build") // loads libmgba_jni.so
+        System.loadLibrary("libnative-mgba") // Loads libmgba_jni.so
     }
 
-    external fun init()
-    external fun loadRom(path: String)
-    external fun getFramebuffer(): ByteBuffer
-    external fun step()
+    external fun init(): Boolean
+    external fun loadRom(path: String): Boolean
+    external fun runFrame()
+    external fun getFramebuffer(): java.nio.ByteBuffer
 }

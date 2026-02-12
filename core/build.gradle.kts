@@ -24,15 +24,22 @@ kotlin {
             // put your Multiplatform dependencies here
             implementation(kotlin("stdlib"))
 
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-            val ktor_version = "3.3.1"
-            implementation("io.ktor:ktor-client-core:${ktor_version}")
-            implementation("io.ktor:ktor-client-cio:${ktor_version}")
-            implementation("io.ktor:ktor-serialization-kotlinx-json:${ktor_version}")
-            implementation("io.ktor:ktor-client-content-negotiation:${ktor_version}")
-            implementation("io.github.jan-tennert.supabase:postgrest-kt:3.0.0")
-            implementation("io.github.jan-tennert.supabase:auth-kt:3.0.0")
-            implementation("io.github.jan-tennert.supabase:realtime-kt:3.0.0")
+            val ktor_version = "3.4.0"
+            api("io.ktor:ktor-client-core:${ktor_version}")
+            api("io.ktor:ktor-client-cio:${ktor_version}")
+            api("io.ktor:ktor-serialization-kotlinx-json:${ktor_version}")
+            api("io.ktor:ktor-client-content-negotiation:${ktor_version}")
+            api("io.github.jan-tennert.supabase:postgrest-kt:3.0.0")
+            api("io.github.jan-tennert.supabase:auth-kt:3.0.0")
+            api("io.github.jan-tennert.supabase:realtime-kt:3.0.0")
+            api("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
+            api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+            implementation(libs.kotlinx.datetime)
+
+
+
+
+
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

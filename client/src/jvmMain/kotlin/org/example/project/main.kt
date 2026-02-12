@@ -27,10 +27,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.serializer.KotlinXSerializer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -39,140 +47,134 @@ import login
 import register
 import saveToken
 import java.io.File
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Serializer
+import kotlinx.serialization.json.Json
 
-@Composable
-fun AuthNav (
 
-){
+@Serializable
+object LoginScreenDestination
 
+@Serializable
+object RegisterScreenDestination
+
+@Serializable
+object HomeScreenDestination
+
+@Serializable
+data class Profile (
+    val id : String,
+    val email : String,
+    val username : String
+)
+
+
+object SupabaseClient {
+    val client = createSupabaseClient(
+        supabaseKey = "sb_publishable_P6DJHLxxuvWKgmFcK5rS1w_PwQUsc49",
+        supabaseUrl = "https://jeiuhnrcakstcwenurci.supabase.co"
+    ){
+        install(Auth)
+        install(Postgrest)
+
+        defaultSerializer = KotlinXSerializer(Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            encodeDefaults = true
+        })
+    }
+
+    suspend fun register (email:String, username : String,password:String, ) {
+        val result = client.auth.signUpWith(Email){
+            this.email = email
+            this.password = password
+        }
+
+        val userId = client.auth.currentUserOrNull()?.id ?: error("user not available")
+
+        client.from("profiles")
+            .insert(
+                Profile(
+                    id = userId,
+                    email = email,
+                    username = username
+                )
+            )
+    }
+
+    suspend fun login (email: String, password: String ){
+        client.auth.signInWith(Email){
+            this.email = email
+            this.password = password
+        }
+    }
+
+    suspend fun logout() {
+        client.auth.signOut()
+    }
+
+    suspend fun getUsername(): Profile? {
+        val user = client.auth.currentUserOrNull() ?: return null
+
+        return client
+            .from("profiles")
+            .select {
+                filter {
+                    eq("id",user.id)
+                }
+            }
+            .decodeSingleOrNull<Profile>()
+
+    }
+
+    fun session() = client.auth.currentSessionOrNull()
 }
 
 fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
-        title = "KotlinProject",
+        title = "Dualocke",
     ) {
-        MaterialTheme{
-            var email = remember { mutableStateOf("") }
-            val confirmEmail = remember { mutableStateOf("") }
-            var username = remember{ mutableStateOf("") }
-            var password = remember{mutableStateOf("")}
-            val confirmPassword = remember { mutableStateOf("") }
-            var message = remember{mutableStateOf("")}
-            var loggedIn = remember{mutableStateOf(loadToken() != null)}
-            var isLoading = remember { mutableStateOf(false) }
-            var isRegistering = remember { mutableStateOf(false) }
+        MaterialTheme {
 
-            val isEmailMatch = email.value == confirmEmail.value
-            val isPasswordMatch = password.value == confirmPassword.value
-
+            val navController = rememberNavController()
             val scope = rememberCoroutineScope()
 
-            val supabase = createSupabaseClient(
-                supabaseKey = "sb_publishable_P6DJHLxxuvWKgmFcK5rS1w_PwQUsc49",
-                supabaseUrl = "https://jeiuhnrcakstcwenurci.supabase.co"
-            ){
-                install(Auth)
-                install(Postgrest)
-            }
-            val session = supabase.auth.currentSessionOrNull()
+            val startDestination = if (SupabaseClient.session() == null)
+                LoginScreenDestination else HomeScreenDestination
 
-
-            if (session == null){
-                AuthNav()
-            } else {
-                    HomeScreen(
-                        onLogout ={
-                            supabase.auth.signOut()
+            NavHost(navController = navController, startDestination = startDestination) {
+                composable<LoginScreenDestination> {
+                    LoginScreen(
+                        onLoginSuccess = {
+                            navController.navigate(HomeScreenDestination)
+                        },
+                        onRegisterClick = {
+                            navController.navigate(RegisterScreenDestination)
                         }
-                )
-            }
-
-            if (!loggedIn.value) {
-                Column(
-                    modifier = Modifier
-                        .padding(24.dp)
-                        .fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-
-                    Text(
-                        if (isRegistering.value) "Register" else "Login",
-                        style = MaterialTheme.typography.h1
-                        )
-
-                    TextField(
-                        value = email.value,
-                        onValueChange = {email.value = it},
-                        label = { Text("Email") }
                     )
-                    TextField(
-                        value = confirmEmail.value,
-                        onValueChange = {confirmEmail.value = it},
-                        label = {Text("Confirm Email")}
-                    )
-                    TextField(
-                        value = username.value,
-                        onValueChange = { username.value = it },
-                        label = { Text("Username") },
-                    )
-                    TextField(
-                        value = password.value,
-                        onValueChange = { password.value = it },
-                        label = { Text("Password") },
-                        modifier = Modifier,
-                        visualTransformation = PasswordVisualTransformation()
-                    )
-                    TextField(
-                        value = confirmPassword.value,
-                        onValueChange = {confirmPassword.value = it},
-                        label = {Text("Confirm Password")},
-                        visualTransformation = PasswordVisualTransformation()
-                    )
+                }
 
-                    Button(
-                        onClick = {
-                            scope.launch(Dispatchers.IO) {
-                                try {
-                                    if (isRegistering.value) {
-                                        register(username.value,password.value)
-                                        message.value = "Registration Successful"
-                                        isRegistering.value = false
-                                    }else{
-                                        val response = login(username.value,password.value)
-                                        saveToken(response.token)
-                                        loggedIn.value = true
-                                        message.value = "Login successful"
-                                    }
+                composable<RegisterScreenDestination> {
+                    RegisterScreen(
+                        onRegisterSuccess = {
+                            navController.popBackStack()
+                        }
+                    )
+                }
 
-                                } catch (e: Exception) {
-                                    message.value = "${e.message}"
-                                } finally {
-                                    isLoading.value = false
+                composable<HomeScreenDestination> {
+                    HomeScreen(
+                        onLogout = {
+                            scope.launch {
+                                SupabaseClient.logout()
+                                navController.navigate(LoginScreenDestination){
+                                    popUpTo(HomeScreenDestination) { inclusive = true }
                                 }
                             }
-                        },
-                        enabled = !isLoading.value && isEmailMatch && isPasswordMatch
-                    ) {
-                        Text(if (isRegistering.value) "Register" else "Login")
-                    }
-
-                    TextButton(onClick = { isRegistering.value = !isRegistering.value }) {
-                        Text(if (isRegistering.value) "Already have an account? Login" else "No account? Register")
-                    }
-
-                    if (message.value.isNotBlank()) Text(message.value)
+                        }
+                    )
                 }
-            } else{
-                HomeScreen(
-                    onLogout = {
-                        saveToken("")
-                        username.value = ""
-                        password.value = ""
-                        loggedIn.value = false
-                    }
-                )
             }
         }
     }

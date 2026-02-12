@@ -9,6 +9,13 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 }
 
+configurations.all {
+    resolutionStrategy {
+        force("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
+        force("org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.6.1")
+    }
+}
+
 kotlin {
     jvm()
     
@@ -35,13 +42,21 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(projects.core)
             implementation(kotlin("stdlib")) // gives you String, Unit, etc.
+            implementation("org.jetbrains.androidx.navigation:navigation-compose:2.9.1")
+            implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.0")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+            implementation(compose.materialIconsExtended)
+
 
             implementation(project(":core"))
+
+
 
 
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+
         }
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
@@ -57,9 +72,11 @@ kotlin {
             implementation("io.ktor:ktor-client-logging:${ktor_version}")
             implementation("io.coil-kt.coil3:coil-network-ktor3:3.3.0")
             implementation("io.coil-kt.coil3:coil-compose:3.3.0")
-            implementation("io.github.jan-tennert.supabase:postgrest-kt:2.5.3")
+            implementation("io.github.jan-tennert.supabase:postgrest-kt:3.0.0")
             implementation("io.github.jan-tennert.supabase:auth-kt:3.0.0")
             implementation("io.github.jan-tennert.supabase:realtime-kt:3.0.0")
+            //implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
+            //implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
         }
     }
 }

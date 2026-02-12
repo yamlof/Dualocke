@@ -8,3 +8,12 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.ktor) apply false
 }
+
+subprojects {
+    configurations.all {
+        resolutionStrategy {
+            force("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
+            force("org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.6.1")
+        }
+    }
+}

@@ -1,55 +1,26 @@
 package org.example.project
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.Button
 import androidx.compose.material.MaterialTheme
-import androidx.compose.material.Surface
-import androidx.compose.material.Text
-import androidx.compose.material.TextButton
-import androidx.compose.material.TextField
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import io.github.jan.supabase.auth.Auth
-import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
-import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.serializer.KotlinXSerializer
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import loadToken
-import login
-import register
-import saveToken
-import java.io.File
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.Serializer
 import kotlinx.serialization.json.Json
+import org.example.project.ui.home.HomeScreen
+import org.example.project.ui.home.rememberPartyViewModel
 
 
 @Serializable
@@ -139,6 +110,9 @@ fun main() = application {
 
             val navController = rememberNavController()
             val scope = rememberCoroutineScope()
+            val viewModel = rememberPartyViewModel()
+            val isMgbaRunning by viewModel.isMgbaRunning.collectAsState()
+            val partyLines by viewModel.partyLines.collectAsState()
 
             val startDestination = if (SupabaseClient.session() == null)
                 LoginScreenDestination else HomeScreenDestination
@@ -168,11 +142,12 @@ fun main() = application {
                         onLogout = {
                             scope.launch {
                                 SupabaseClient.logout()
-                                navController.navigate(LoginScreenDestination){
+                                navController.navigate(LoginScreenDestination) {
                                     popUpTo(HomeScreenDestination) { inclusive = true }
                                 }
                             }
-                        }
+                        },
+                        isMgbaRunning = isMgbaRunning
                     )
                 }
             }

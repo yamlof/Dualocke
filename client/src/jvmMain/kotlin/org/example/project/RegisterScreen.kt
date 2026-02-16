@@ -89,6 +89,10 @@ fun RegisterScreen(
             Text("Register")
         }
 
+        TextButton(onClick = onRegisterSuccess){
+            Text("Already have an account? Click here")
+        }
+
         if (error.isNotEmpty()) Text(error, color = Color.Red)
     }
 }

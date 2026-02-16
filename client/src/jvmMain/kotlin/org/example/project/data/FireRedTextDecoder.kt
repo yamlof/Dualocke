@@ -1,0 +1,177 @@
+package org.example.project.data
+
+import kotlin.collections.get
+
+val frCharset = mapOf(
+    // Space and punctuation
+    0x00 to " ",
+    0x01 to "À",
+    0x02 to "Á",
+    0x03 to "Â",
+    0x04 to "Ç",
+    0x05 to "È",
+    0x06 to "É",
+    0x07 to "Ê",
+    0x08 to "Ë",
+    0x09 to "Ì",
+    0x0B to "Î",
+    0x0C to "Ï",
+    0x0D to "Ò",
+    0x0E to "Ó",
+    0x0F to "Ô",
+    0x10 to "Œ",
+    0x11 to "Ù",
+    0x12 to "Ú",
+    0x13 to "Û",
+    0x14 to "Ñ",
+    0x15 to "ß",
+    0x16 to "à",
+    0x17 to "á",
+    0x19 to "ç",
+    0x1A to "è",
+    0x1B to "é",
+    0x1C to "ê",
+    0x1D to "ë",
+    0x1E to "ì",
+    0x20 to "î",
+    0x21 to "ï",
+    0x22 to "ò",
+    0x23 to "ó",
+    0x24 to "ô",
+    0x25 to "œ",
+    0x26 to "ù",
+    0x27 to "ú",
+    0x28 to "û",
+    0x29 to "ñ",
+    0x2A to "º",
+    0x2B to "ª",
+    0x2C to "ᵉʳ",
+    0x2D to "&",
+    0x2E to "+",
+
+    0x34 to "Lv",
+    0x35 to "=",
+    0x36 to ";",
+
+    // Special characters
+    0x51 to "¿",
+    0x52 to "¡",
+    0x53 to "PK",
+    0x54 to "MN",
+    0x55 to "PO",
+    0x56 to "Ké",
+    0x57 to "BL",
+    0x58 to "OC",
+    0x59 to "K",
+
+    0x68 to "Í",
+    0x69 to "%",
+    0x6A to "(",
+    0x6B to ")",
+
+    0x79 to "â",
+
+    0x7A to "í",
+
+    0x84 to "ᵉ",
+    0x85 to "<",
+    0x86 to ">",
+
+    // Uppercase letters A-Z
+    0xBB to "A",
+    0xBC to "B",
+    0xBD to "C",
+    0xBE to "D",
+    0xBF to "E",
+    0xC0 to "F",
+    0xC1 to "G",
+    0xC2 to "H",
+    0xC3 to "I",
+    0xC4 to "J",
+    0xC5 to "K",
+    0xC6 to "L",
+    0xC7 to "M",
+    0xC8 to "N",
+    0xC9 to "O",
+    0xCA to "P",
+    0xCB to "Q",
+    0xCC to "R",
+    0xCD to "S",
+    0xCE to "T",
+    0xCF to "U",
+    0xD0 to "V",
+    0xD1 to "W",
+    0xD2 to "X",
+    0xD3 to "Y",
+    0xD4 to "Z",
+
+    // Lowercase letters a-z
+    0xD5 to "a",
+    0xD6 to "b",
+    0xD7 to "c",
+    0xD8 to "d",
+    0xD9 to "e",
+    0xDA to "f",
+    0xDB to "g",
+    0xDC to "h",
+    0xDD to "i",
+    0xDE to "j",
+    0xDF to "k",
+    0xE0 to "l",
+    0xE1 to "m",
+    0xE2 to "n",
+    0xE3 to "o",
+    0xE4 to "p",
+    0xE5 to "q",
+    0xE6 to "r",
+    0xE7 to "s",
+    0xE8 to "t",
+    0xE9 to "u",
+    0xEA to "v",
+    0xEB to "w",
+    0xEC to "x",
+    0xED to "y",
+    0xEE to "z",
+
+    // Numbers 0-9
+    0xA1 to "0",
+    0xA2 to "1",
+    0xA3 to "2",
+    0xA4 to "3",
+    0xA5 to "4",
+    0xA6 to "5",
+    0xA7 to "6",
+    0xA8 to "7",
+    0xA9 to "8",
+    0xAA to "9",
+
+    // Punctuation
+    0xAB to "!",
+    0xAC to "?",
+    0xAD to ".",
+    0xAE to "-",
+    0xAF to "·",
+    0xB0 to "…",
+    0xB1 to """,
+        0xB2 to """,
+    0xB3 to "'",
+    0xB4 to "'",
+    0xB5 to "♂",
+    0xB6 to "♀",
+    0xB7 to "$",
+    0xB8 to ",",
+    0xB9 to "×",
+    0xBA to "/",
+
+    // Control characters
+    0xFC to "\n",  // Newline
+    0xFD to "\n",  // Prompt for next page
+    0xFE to "\n",  // Buffer
+    0xFF to ""     // String terminator
+)
+
+fun decodeFRString(bytes: ByteArray): String =
+    bytes
+        .takeWhile { it.toUByte().toInt() != 0xFF }
+        .map { frCharset[it.toInt() and 0xFF] ?: '?' }
+        .joinToString("")

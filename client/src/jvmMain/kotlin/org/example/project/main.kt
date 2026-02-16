@@ -19,6 +19,8 @@ import io.github.jan.supabase.serializer.KotlinXSerializer
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.example.project.ui.auth.LoginScreen
+import org.example.project.ui.auth.RegisterScreen
 import org.example.project.ui.home.HomeScreen
 import org.example.project.ui.home.rememberPartyViewModel
 

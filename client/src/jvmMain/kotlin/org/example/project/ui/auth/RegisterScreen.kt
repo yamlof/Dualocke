@@ -1,4 +1,4 @@
-package org.example.project
+package org.example.project.ui.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,14 +21,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.example.project.SupabaseClient
 
 @Composable
-fun LoginScreen(
-    onLoginSuccess: () -> Unit,
-    onRegisterClick: () -> Unit
+fun RegisterScreen(
+    onRegisterSuccess: () -> Unit
 ){
+
     var email by remember { mutableStateOf("") }
     var password by remember {mutableStateOf("")}
+    var confirmPassword by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
@@ -39,12 +42,18 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Login",style = MaterialTheme.typography.h1)
+        Text("Register",style = MaterialTheme.typography.h1)
 
         TextField(
             value = email,
             onValueChange = {email = it},
             label = { Text("Email") }
+        )
+
+        TextField(
+            value = username,
+            onValueChange = {username = it},
+            label = {Text("Username")}
         )
 
         TextField(
@@ -54,23 +63,35 @@ fun LoginScreen(
             visualTransformation = PasswordVisualTransformation()
         )
 
+        TextField(
+            value = confirmPassword,
+            onValueChange = {confirmPassword = it},
+            label = {Text("Confirm Password")},
+            visualTransformation = PasswordVisualTransformation()
+        )
+
         Button(
             onClick = {
+                if (password != confirmPassword){
+                    error = "Passwords do not match"
+                    return@Button
+                }
+
                 scope.launch {
                     try {
-                        SupabaseClient.login(email,password)
-                        onLoginSuccess()
+                        SupabaseClient.register(email,username,password)
+                        onRegisterSuccess()
                     } catch (e: Exception){
-                        error = e.message ?: "Login Failed"
+                        error = e.message ?: "Registration Failed"
                     }
                 }
             }
         ){
-            Text("Login")
+            Text("Register")
         }
 
-        TextButton(onClick = onRegisterClick){
-            Text("No account? Register")
+        TextButton(onClick = onRegisterSuccess){
+            Text("Already have an account? Click here")
         }
 
         if (error.isNotEmpty()) Text(error, color = Color.Red)

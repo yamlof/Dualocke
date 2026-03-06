@@ -12,10 +12,14 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import org.example.project.ui.home.QuickActionCard
 
 @Composable
-fun QuickActionGrid(){
+fun QuickActionGrid(
+    onLeaderBoardsClick:() ->Unit,
+    onHistoryClick:() -> Unit,
+    onCommunityClick:() -> Unit,
+    onSettingsClick: () -> Unit
+){
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ){
@@ -28,14 +32,14 @@ fun QuickActionGrid(){
                 icon = Icons.Default.List,
                 description = "View Rankings",
                 modifier = Modifier.weight(1f),
-                onClick = {}
+                onClick = onLeaderBoardsClick
             )
             QuickActionCard(
                 title = "Match History",
                 icon = Icons.Default.Done,
                 description = "Past battles",
                 modifier = Modifier.weight(1f),
-                onClick = {}
+                onClick = onHistoryClick
             )
             Row (
                 modifier = Modifier.fillMaxWidth(),
@@ -46,14 +50,14 @@ fun QuickActionGrid(){
                     icon = Icons.Default.Person,
                     description = "Connect",
                     modifier = Modifier.weight(1f),
-                    onClick = {}
+                    onClick = onCommunityClick
                 )
                 QuickActionCard(
                     title = "Settings",
                     icon = Icons.Default.Settings,
                     description = "Preferences",
                     modifier = Modifier.weight(1f),
-                    onClick = {}
+                    onClick = onSettingsClick
                 )
             }
 

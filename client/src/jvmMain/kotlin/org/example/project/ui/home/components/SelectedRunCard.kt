@@ -33,12 +33,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import org.example.project.ui.home.StatItem
 
 @Composable
 fun SelectedRunCard(
     trainerName: String,
-    pokemonTeamIcon: List<String>
+    gameName: String = "Pokemon FireRed",
+    badges :String = "0/8",
+    deaths :String = "0",
+    pokemonTeamIcon: List<String>,
+    onChangeRun: () -> Unit
 ){
     Card (
         modifier = Modifier.fillMaxWidth(),
@@ -59,7 +62,7 @@ fun SelectedRunCard(
                     fontWeight = FontWeight.Bold
                 )
                 IconButton(
-                    onClick = {},
+                    onClick = onChangeRun,
                     modifier = Modifier.size(40.dp)
                 ){
                     Icon(
@@ -111,7 +114,7 @@ fun SelectedRunCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            "Pokemon FireRed",
+                            text = gameName,
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -126,7 +129,7 @@ fun SelectedRunCard(
             ){
                 StatItem(
                     label = "Badges",
-                    value = "0/8"
+                    value = badges
                 )
                 VerticalDivider(
                     modifier = Modifier
@@ -135,7 +138,7 @@ fun SelectedRunCard(
                 )
                 StatItem(
                     label = "Deaths",
-                    value = "0"
+                    value = deaths
                 )
                 VerticalDivider(
                     modifier = Modifier

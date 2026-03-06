@@ -22,7 +22,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun WelcomeSection(
     username:String?,
-    isLoading: Boolean
+    isLoading: Boolean,
+    rank :String = "Grandmaster"
 ){
     Column {
         Text(
@@ -55,7 +56,7 @@ fun WelcomeSection(
 
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    "Grandmaster",
+                    text = rank,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     fontWeight = FontWeight.Bold

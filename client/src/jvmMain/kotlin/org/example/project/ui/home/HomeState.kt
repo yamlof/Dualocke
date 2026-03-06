@@ -6,6 +6,7 @@ data class HomeUiState(
     val rank:String = "GrandMaster",
 
     // Run Data
+    val currentRunId: String? = null,
     val trainerName : String = "",
     val gameName: String = "Pokemon FireRed",
     val badges: String = "0/8",
@@ -15,5 +16,7 @@ data class HomeUiState(
     // TCP Data
     val partyLines: List<String> = emptyList(),
     val isConnected: Boolean = false,
-    val connectionError:String? = null
+    val connectionError:String? = null,
+
+    val showEmulatorPathPrompt: Boolean = false
 )

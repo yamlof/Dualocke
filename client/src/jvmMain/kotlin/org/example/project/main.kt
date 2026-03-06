@@ -149,7 +149,7 @@ fun main() = application {
                                 }
                             }
                         },
-                        isMgbaRunning = isMgbaRunning
+                        //isMgbaRunning = isMgbaRunning
                     )
                 }
             }

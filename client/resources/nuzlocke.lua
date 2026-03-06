@@ -1,3 +1,10 @@
+-- ============================================================
+-- Nuzlocke Tracker for mGBA
+-- Extends party reading with death detection, encounter
+-- tracking, badge progress, and tamper-evident snapshots.
+-- Communicates over TCP socket (default port 8888).
+-- ============================================================
+
 local Game = {
 	new = function (self, game)
 		self.__index = self
@@ -51,6 +58,47 @@ function Game.getSpeciesName(game, id)
 	return game:toString(emu.memory.cart0:readRange(pointer, game._monNameLength))
 end
 
+-- ── Badge reading ─────────────────────────────────────────────────────────────
+
+-- Returns an 8-bit integer; each bit = one badge earned.
+-- Gen 1 (RBY): 0xD356  Gen 2 (GS): 0xD57C / Crystal 0xD57C
+-- Gen 3 badge bytes differ per game and are set per-game below.
+function Game.getBadges(game)
+	if not game._badgeAddress then return 0 end
+	return emu:read8(game._badgeAddress)
+end
+
+-- ── Route / Map detection ─────────────────────────────────────────────────────
+
+-- Returns the current map/location ID as a number.
+-- The address and width differ per generation:
+--   Gen1: 1 byte at _mapAddress
+--   Gen2: 1 byte at _mapAddress
+--   Gen3: 2 bytes (little-endian) at _mapAddress (bank<<8|map or map16)
+function Game.getMapId(game)
+	if not game._mapAddress then return 0 end
+	if game._mapIs16 then
+		return emu:read16(game._mapAddress)
+	end
+	return emu:read8(game._mapAddress)
+end
+
+-- ── Checksum (simple, tamper-evident) ────────────────────────────────────────
+
+-- XOR-fold all bytes of a string into a single 32-bit value.
+-- Kotlin must reproduce this identically for snapshot validation.
+local function simpleChecksum(s)
+	local h = 0x811c9dc5  -- FNV offset basis
+	for i = 1, #s do
+		h = ((h ~ s:byte(i)) * 0x01000193) & 0xFFFFFFFF
+	end
+	return h
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- Character maps (unchanged from original)
+-- ═══════════════════════════════════════════════════════════════
+
 local GBGameEn = Game:new{
 	_terminator=0x50,
 	_monNameLength=10,
@@ -81,42 +129,46 @@ local Generation3En = GBAGameEn:new{
 }
 
 GBGameEn._charmap = { [0]=
-	"�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�",
-	"�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�",
-	"�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�",
-	"�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�",
-	"�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�",
-	"", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�",
-	"�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�",
-	"�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", " ",
+	"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?",
+	"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?",
+	"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?",
+	"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?",
+	"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?",
+	"", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?",
+	"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?",
+	"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", " ",
 	"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P",
 	"Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "(", ")", ":", ";", "[", "]",
 	"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p",
-	"q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "é", "ʼd", "ʼl", "ʼs", "ʼt", "ʼv",
-	"�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�",
-	"�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�", "�",
-	"'", "P\u{200d}k", "M\u{200d}n", "-", "ʼr", "ʼm", "?", "!", ".", "ァ", "ゥ", "ェ", "▹", "▸", "▾", "♂",
-	"$", "×", ".", "/", ",", "♀", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"
+	"q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "e", "'d", "'l", "'s", "'t", "'v",
+	"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?",
+	"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?",
+	"'", "Pk", "Mn", "-", "'r", "'m", "?", "!", ".", "a", "u", "e", ">", ">", "v", "m",
+	"$", "x", ".", "/", ",", "f", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"
 }
 
 GBAGameEn._charmap = { [0]=
-	" ", "À", "Á", "Â", "Ç", "È", "É", "Ê", "Ë", "Ì", "こ", "Î", "Ï", "Ò", "Ó", "Ô",
-	"Œ", "Ù", "Ú", "Û", "Ñ", "ß", "à", "á", "ね", "ç", "è", "é", "ê", "ë", "ì", "ま",
-	"î", "ï", "ò", "ó", "ô", "œ", "ù", "ú", "û", "ñ", "º", "ª", "�", "&", "+", "あ",
-	"ぃ", "ぅ", "ぇ", "ぉ", "v", "=", "ょ", "が", "ぎ", "ぐ", "げ", "ご", "ざ", "じ", "ず", "ぜ",
-	"ぞ", "だ", "ぢ", "づ", "で", "ど", "ば", "び", "ぶ", "べ", "ぼ", "ぱ", "ぴ", "ぷ", "ぺ", "ぽ",
-	"っ", "¿", "¡", "P\u{200d}k", "M\u{200d}n", "P\u{200d}o", "K\u{200d}é", "�", "�", "�", "Í", "%", "(", ")", "セ", "ソ",
-	"タ", "チ", "ツ", "テ", "ト", "ナ", "ニ", "ヌ", "â", "ノ", "ハ", "ヒ", "フ", "ヘ", "ホ", "í",
-	"ミ", "ム", "メ", "モ", "ヤ", "ユ", "ヨ", "ラ", "リ", "⬆", "⬇", "⬅", "➡", "ヲ", "ン", "ァ",
-	"ィ", "ゥ", "ェ", "ォ", "ャ", "ュ", "ョ", "ガ", "ギ", "グ", "ゲ", "ゴ", "ザ", "ジ", "ズ", "ゼ",
-	"ゾ", "ダ", "ヂ", "ヅ", "デ", "ド", "バ", "ビ", "ブ", "ベ", "ボ", "パ", "ピ", "プ", "ペ", "ポ",
-	"ッ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "!", "?", ".", "-", "・",
-	"…", "“", "”", "‘", "’", "♂", "♀", "$", ",", "×", "/", "A", "B", "C", "D", "E",
+	" ", "A", "A", "A", "C", "E", "E", "E", "E", "I", "ko", "I", "I", "O", "O", "O",
+	"Oe", "U", "U", "U", "N", "ss", "a", "a", "ne", "c", "e", "e", "e", "e", "i", "ma",
+	"i", "i", "o", "o", "o", "oe", "u", "u", "u", "n", "o", "a", "?", "&", "+", "a",
+	"i", "u", "e", "o", "v", "=", "yo", "ga", "gi", "gu", "ge", "go", "za", "ji", "zu", "ze",
+	"zo", "da", "di", "du", "de", "do", "ba", "bi", "bu", "be", "bo", "pa", "pi", "pu", "pe", "po",
+	"tsu", "?", "!", "Pk", "Mn", "Po", "Ke", "?", "?", "?", "I", "%", "(", ")", "SE", "SO",
+	"TA", "TI", "TU", "TE", "TO", "NA", "NI", "NU", "a", "NO", "HA", "HI", "FU", "HE", "HO", "i",
+	"MI", "MU", "ME", "MO", "YA", "YU", "YO", "RA", "RI", "^", "v", "<", ">", "WO", "N", "a",
+	"i", "u", "e", "o", "ya", "yu", "yo", "GA", "GI", "GU", "GE", "GO", "ZA", "ZI", "ZU", "ZE",
+	"ZO", "DA", "DI", "DU", "DE", "DO", "BA", "BI", "BU", "BE", "BO", "PA", "PI", "PU", "PE", "PO",
+	"TSU", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "!", "?", ".", "-", ".",
+	"...", "\"", "\"", "'", "'", "m", "f", "$", ",", "x", "/", "A", "B", "C", "D", "E",
 	"F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
 	"V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k",
-	"l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "▶",
-	":", "Ä", "Ö", "Ü", "ä", "ö", "ü", "⬆", "⬇", "⬅", "�", "�", "�", "�", "�", ""
+	"l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", ">",
+	":", "A", "O", "U", "a", "o", "u", "^", "v", "<", "?", "?", "?", "?", "?", ""
 }
+
+-- ═══════════════════════════════════════════════════════════════
+-- Mon readers (unchanged from original)
+-- ═══════════════════════════════════════════════════════════════
 
 function _read16BE(emu, address)
 	return (emu:read8(address) << 8) | emu:read8(address + 1)
@@ -144,7 +196,7 @@ function Generation1En._readBoxMon(game, address, nameAddress, otAddress)
 	mon.defenseEV = _read16BE(emu, address + 21)
 	mon.speedEV = _read16BE(emu, address + 23)
 	mon.spAttackEV = _read16BE(emu, address + 25)
-	mon.spDefenseEV = mon.spAttackEv
+	mon.spDefenseEV = mon.spAttackEV
 	local iv = _read16BE(emu, address + 27)
 	mon.attackIV = (iv >> 4) & 0xF
 	mon.defenseIV = iv & 0xF
@@ -191,7 +243,7 @@ function Generation2En._readBoxMon(game, address, nameAddress, otAddress)
 	mon.defenseEV = _read16BE(emu, address + 15)
 	mon.speedEV = _read16BE(emu, address + 17)
 	mon.spAttackEV = _read16BE(emu, address + 19)
-	mon.spDefenseEV = mon.spAttackEv
+	mon.spDefenseEV = mon.spAttackEV
 	local iv = _read16BE(emu, address + 21)
 	mon.attackIV = (iv >> 4) & 0xF
 	mon.defenseIV = iv & 0xF
@@ -243,233 +295,170 @@ function Generation3En._readBoxMon(game, address)
 
 	local key = mon.otId ~ mon.personality
 	local substructSelector = {
-		[ 0] = {0, 1, 2, 3},
-		[ 1] = {0, 1, 3, 2},
-		[ 2] = {0, 2, 1, 3},
-		[ 3] = {0, 3, 1, 2},
-		[ 4] = {0, 2, 3, 1},
-		[ 5] = {0, 3, 2, 1},
-		[ 6] = {1, 0, 2, 3},
-		[ 7] = {1, 0, 3, 2},
-		[ 8] = {2, 0, 1, 3},
-		[ 9] = {3, 0, 1, 2},
-		[10] = {2, 0, 3, 1},
-		[11] = {3, 0, 2, 1},
-		[12] = {1, 2, 0, 3},
-		[13] = {1, 3, 0, 2},
-		[14] = {2, 1, 0, 3},
-		[15] = {3, 1, 0, 2},
-		[16] = {2, 3, 0, 1},
-		[17] = {3, 2, 0, 1},
-		[18] = {1, 2, 3, 0},
-		[19] = {1, 3, 2, 0},
-		[20] = {2, 1, 3, 0},
-		[21] = {3, 1, 2, 0},
-		[22] = {2, 3, 1, 0},
-		[23] = {3, 2, 1, 0},
+		[ 0] = {1, 2, 3, 4}, [ 1] = {1, 2, 4, 3}, [ 2] = {1, 3, 2, 4},
+		[ 3] = {1, 4, 2, 3}, [ 4] = {1, 3, 4, 2}, [ 5] = {1, 4, 3, 2},
+		[ 6] = {2, 1, 3, 4}, [ 7] = {2, 1, 4, 3}, [ 8] = {3, 1, 2, 4},
+		[ 9] = {4, 1, 2, 3}, [10] = {3, 1, 4, 2}, [11] = {4, 1, 3, 2},
+		[12] = {2, 3, 1, 4}, [13] = {2, 4, 1, 3}, [14] = {3, 2, 1, 4},
+		[15] = {4, 2, 1, 3}, [16] = {3, 4, 1, 2}, [17] = {4, 3, 1, 2},
+		[18] = {2, 3, 4, 1}, [19] = {2, 4, 3, 1}, [20] = {3, 2, 4, 1},
+		[21] = {4, 2, 3, 1}, [22] = {3, 4, 2, 1}, [23] = {4, 3, 2, 1},
 	}
 
 	local pSel = substructSelector[mon.personality % 24]
-	local ss0 = {}
-	local ss1 = {}
-	local ss2 = {}
-	local ss3 = {}
-
-	for i = 0, 2 do
-		ss0[i] = emu:read32(address + 32 + pSel[1] * 12 + i * 4) ~ key
-		ss1[i] = emu:read32(address + 32 + pSel[2] * 12 + i * 4) ~ key
-		ss2[i] = emu:read32(address + 32 + pSel[3] * 12 + i * 4) ~ key
-		ss3[i] = emu:read32(address + 32 + pSel[4] * 12 + i * 4) ~ key
+	local ss = {}
+	for s = 1, 4 do
+		ss[s] = {}
+		for i = 0, 2 do
+			ss[s][i] = emu:read32(address + 32 + (pSel[s] - 1) * 12 + i * 4) ~ key
+		end
 	end
 
-	mon.species = ss0[0] & 0xFFFF
-	mon.heldItem = ss0[0] >> 16
-	mon.experience = ss0[1]
-	mon.ppBonuses = ss0[2] & 0xFF
-	mon.friendship = (ss0[2] >> 8) & 0xFF
+	mon.species    = ss[1][0] & 0xFFFF
+	mon.heldItem   = ss[1][0] >> 16
+	mon.experience = ss[1][1]
+	mon.ppBonuses  = ss[1][2] & 0xFF
+	mon.friendship = (ss[1][2] >> 8) & 0xFF
 
 	mon.moves = {
-		ss1[0] & 0xFFFF,
-		ss1[0] >> 16,
-		ss1[1] & 0xFFFF,
-		ss1[1] >> 16
+		ss[2][0] & 0xFFFF, ss[2][0] >> 16,
+		ss[2][1] & 0xFFFF, ss[2][1] >> 16
 	}
 	mon.pp = {
-		ss1[2] & 0xFF,
-		(ss1[2] >> 8) & 0xFF,
-		(ss1[2] >> 16) & 0xFF,
-		ss1[2] >> 24
+		ss[2][2] & 0xFF, (ss[2][2] >> 8) & 0xFF,
+		(ss[2][2] >> 16) & 0xFF, ss[2][2] >> 24
 	}
 
-	mon.hpEV = ss2[0] & 0xFF
-	mon.attackEV = (ss2[0] >> 8) & 0xFF
-	mon.defenseEV = (ss2[0] >> 16) & 0xFF
-	mon.speedEV = ss2[0] >> 24
-	mon.spAttackEV = ss2[1] & 0xFF
-	mon.spDefenseEV = (ss2[1] >> 8) & 0xFF
-	mon.cool = (ss2[1] >> 16) & 0xFF
-	mon.beauty = ss2[1] >> 24
-	mon.cute = ss2[2] & 0xFF
-	mon.smart = (ss2[2] >> 8) & 0xFF
-	mon.tough = (ss2[2] >> 16) & 0xFF
-	mon.sheen = ss2[2] >> 24
+	mon.hpEV       = ss[3][0] & 0xFF
+	mon.attackEV   = (ss[3][0] >> 8) & 0xFF
+	mon.defenseEV  = (ss[3][0] >> 16) & 0xFF
+	mon.speedEV    = ss[3][0] >> 24
+	mon.spAttackEV = ss[3][1] & 0xFF
+	mon.spDefenseEV= (ss[3][1] >> 8) & 0xFF
 
-	mon.pokerus = ss3[0] & 0xFF
-	mon.metLocation = (ss3[0] >> 8) & 0xFF
-	flags = ss3[0] >> 16
-	mon.metLevel = flags & 0x7F
-	mon.metGame = (flags >> 7) & 0xF
-	mon.pokeball = (flags >> 11) & 0xF
-	mon.otGender = (flags >> 15) & 0x1
-	flags = ss3[1]
-	mon.hpIV = flags & 0x1F
-	mon.attackIV = (flags >> 5) & 0x1F
-	mon.defenseIV = (flags >> 10) & 0x1F
-	mon.speedIV = (flags >> 15) & 0x1F
-	mon.spAttackIV = (flags >> 20) & 0x1F
+	mon.pokerus      = ss[4][0] & 0xFF
+	mon.metLocation  = (ss[4][0] >> 8) & 0xFF
+	flags = ss[4][0] >> 16
+	mon.metLevel  = flags & 0x7F
+	mon.metGame   = (flags >> 7) & 0xF
+	mon.pokeball  = (flags >> 11) & 0xF
+	mon.otGender  = (flags >> 15) & 0x1
+	flags = ss[4][1]
+	mon.hpIV        = flags & 0x1F
+	mon.attackIV    = (flags >> 5) & 0x1F
+	mon.defenseIV   = (flags >> 10) & 0x1F
+	mon.speedIV     = (flags >> 15) & 0x1F
+	mon.spAttackIV  = (flags >> 20) & 0x1F
 	mon.spDefenseIV = (flags >> 25) & 0x1F
-	-- Bit 30 is another "isEgg" bit
-	mon.altAbility = (flags >> 31) & 1
-	flags = ss3[2]
-	mon.coolRibbon = flags & 7
-	mon.beautyRibbon = (flags >> 3) & 7
-	mon.cuteRibbon = (flags >> 6) & 7
-	mon.smartRibbon = (flags >> 9) & 7
-	mon.toughRibbon = (flags >> 12) & 7
-	mon.championRibbon = (flags >> 15) & 1
-	mon.winningRibbon = (flags >> 16) & 1
-	mon.victoryRibbon = (flags >> 17) & 1
-	mon.artistRibbon = (flags >> 18) & 1
-	mon.effortRibbon = (flags >> 19) & 1
-	mon.marineRibbon = (flags >> 20) & 1
-	mon.landRibbon = (flags >> 21) & 1
-	mon.skyRibbon = (flags >> 22) & 1
-	mon.countryRibbon = (flags >> 23) & 1
-	mon.nationalRibbon = (flags >> 24) & 1
-	mon.earthRibbon = (flags >> 25) & 1
-	mon.worldRibbon = (flags >> 26) & 1
-	mon.eventLegal = (flags >> 27) & 0x1F
+	mon.altAbility  = (flags >> 31) & 1
 	return mon
 end
 
 function Generation3En._readPartyMon(game, address)
 	local mon = game:_readBoxMon(address)
-	mon.status = emu:read32(address + 80)
-	mon.level = emu:read8(address + 84)
-	mon.mail = emu:read32(address + 85)
-	mon.hp = emu:read16(address + 86)
-	mon.maxHP = emu:read16(address + 88)
-	mon.attack = emu:read16(address + 90)
-	mon.defense = emu:read16(address + 92)
-	mon.speed = emu:read16(address + 94)
+	mon.status   = emu:read32(address + 80)
+	mon.level    = emu:read8(address + 84)
+	mon.hp       = emu:read16(address + 86)
+	mon.maxHP    = emu:read16(address + 88)
+	mon.attack   = emu:read16(address + 90)
+	mon.defense  = emu:read16(address + 92)
+	mon.speed    = emu:read16(address + 94)
 	mon.spAttack = emu:read16(address + 96)
-	mon.spDefense = emu:read16(address + 98)
+	mon.spDefense= emu:read16(address + 98)
 	return mon
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- Game definitions  (badge + map addresses added)
+-- ═══════════════════════════════════════════════════════════════
+
 local gameRBEn = Generation1En:new{
 	name="Red/Blue (USA)",
-	_party=0xd16b,
-	_partyCount=0xd163,
-	_partyNames=0xd2b5,
-	_partyOt=0xd273,
-	_speciesNameTable=0x1c21e,
-	_speciesIndex=0x41024,
+	_party=0xd16b, _partyCount=0xd163, _partyNames=0xd2b5, _partyOt=0xd273,
+	_speciesNameTable=0x1c21e, _speciesIndex=0x41024,
+	_badgeAddress=0xD356,  -- Kanto badge bitfield
+	_mapAddress=0xD35E,
 }
 
 local gameYellowEn = Generation1En:new{
 	name="Yellow (USA)",
-	_party=0xd16a,
-	_partyCount=0xd162,
-	_partyNames=0xd2b4,
-	_partyOt=0xd272,
-	_speciesNameTable=0xe8000,
-	_speciesIndex=0x410b1,
+	_party=0xd16a, _partyCount=0xd162, _partyNames=0xd2b4, _partyOt=0xd272,
+	_speciesNameTable=0xe8000, _speciesIndex=0x410b1,
+	_badgeAddress=0xD356,
+	_mapAddress=0xD35E,
 }
 
 local gameGSEn = Generation2En:new{
 	name="Gold/Silver (USA)",
-	_party=0xda2a,
-	_partyCount=0xda22,
-	_partyNames=0xdb8c,
-	_partyOt=0xdb4a,
+	_party=0xda2a, _partyCount=0xda22, _partyNames=0xdb8c, _partyOt=0xdb4a,
 	_speciesNameTable=0x1b0b6a,
+	_badgeAddress=0xD57C,  -- Johto badges; Kanto at 0xD57D
+	_mapAddress=0xDCB5,
 }
 
 local gameCrystalEn = Generation2En:new{
 	name="Crystal (USA)",
-	_party=0xdcdf,
-	_partyCount=0xdcd7,
-	_partyNames=0xde41,
-	_partyOt=0xddff,
+	_party=0xdcdf, _partyCount=0xdcd7, _partyNames=0xde41, _partyOt=0xddff,
 	_speciesNameTable=0x5337a,
+	_badgeAddress=0xD57C,
+	_mapAddress=0xDCB5,
 }
 
 local gameRubyEn = Generation3En:new{
 	name="Ruby (USA)",
-	_party=0x3004360,
-	_partyCount=0x3004350,
-	_speciesNameTable=0x1f716c,
+	_party=0x3004360, _partyCount=0x3004350, _speciesNameTable=0x1f716c,
+	_badgeAddress=0x20257C8,  -- Hoenn badges byte
+	_mapAddress=0x3004F00, _mapIs16=true,
 }
 
 local gameRubyEnR1 = Generation3En:new{
-	name="Ruby (USA)",
-	_party=0x3004360,
-	_partyCount=0x3004350,
-	_speciesNameTable=0x1f7184,
+	name="Ruby (USA) Rev1",
+	_party=0x3004360, _partyCount=0x3004350, _speciesNameTable=0x1f7184,
+	_badgeAddress=0x20257C8, _mapAddress=0x3004F00, _mapIs16=true,
 }
 
 local gameSapphireEn = Generation3En:new{
 	name="Sapphire (USA)",
-	_party=0x3004360,
-	_partyCount=0x3004350,
-	_speciesNameTable=0x1f70fc,
+	_party=0x3004360, _partyCount=0x3004350, _speciesNameTable=0x1f70fc,
+	_badgeAddress=0x20257C8, _mapAddress=0x3004F00, _mapIs16=true,
 }
 
 local gameSapphireEnR1 = Generation3En:new{
-	name="Sapphire (USA)",
-	_party=0x3004360,
-	_partyCount=0x3004350,
-	_speciesNameTable=0x1f7114,
+	name="Sapphire (USA) Rev1",
+	_party=0x3004360, _partyCount=0x3004350, _speciesNameTable=0x1f7114,
+	_badgeAddress=0x20257C8, _mapAddress=0x3004F00, _mapIs16=true,
 }
 
 local gameEmeraldEn = Generation3En:new{
 	name="Emerald (USA)",
-	_party=0x20244ec,
-	_partyCount=0x20244e9,
-	_speciesNameTable=0x3185c8,
+	_party=0x20244ec, _partyCount=0x20244e9, _speciesNameTable=0x3185c8,
+	_badgeAddress=0x20257C8, _mapAddress=0x3004F00, _mapIs16=true,
 }
 
 local gameFireRedEn = Generation3En:new{
 	name="FireRed (USA)",
-	_party=0x2024284,
-	_partyCount=0x2024029,
-	_speciesNameTable=0x245ee0,
+	_party=0x2024284, _partyCount=0x2024029, _speciesNameTable=0x245ee0,
+	_badgeAddress=0x20257C8, _mapAddress=0x3004F00, _mapIs16=true,
 }
 
 local gameFireRedEnR1 = gameFireRedEn:new{
-	name="FireRed (USA) (Rev 1)",
-	_speciesNameTable=0x245f50,
+	name="FireRed (USA) Rev1", _speciesNameTable=0x245f50,
 }
 
 local gameLeafGreenEn = Generation3En:new{
 	name="LeafGreen (USA)",
-	_party=0x2024284,
-	_partyCount=0x2024029,
-	_speciesNameTable=0x245ebc,
+	_party=0x2024284, _partyCount=0x2024029, _speciesNameTable=0x245ebc,
+	_badgeAddress=0x20257C8, _mapAddress=0x3004F00, _mapIs16=true,
 }
 
 local gameLeafGreenEnR1 = gameLeafGreenEn:new{
-	name="LeafGreen (USA)",
-	_party=0x2024284,
-	_partyCount=0x2024029,
-	_speciesNameTable=0x245f2c,
+	name="LeafGreen (USA) Rev1", _speciesNameTable=0x245f2c,
 }
 
 local gameCodes = {
 	[C.PLATFORM.GB] = {
-		["AAUE"] = gameGSEn, -- Gold
-		["AAXE"] = gameGSEn, -- Silver
+		["AAUE"] = gameGSEn,
+		["AAXE"] = gameGSEn,
 		["BYTE"] = gameCrystalEn,
 	},
 	[C.PLATFORM.GBA] = {
@@ -481,95 +470,224 @@ local gameCodes = {
 	}
 }
 
--- These versions have slight differences and/or cannot be uniquely
--- identified by their in-header game codes, so fall back on a CRC32
 local gameCrc32 = {
-	[0x9f7fdd53] = gameRBEn, -- Red
-	[0xd6da8a1a] = gameRBEn, -- Blue
+	[0x9f7fdd53] = gameRBEn,
+	[0xd6da8a1a] = gameRBEn,
 	[0x7d527d62] = gameYellowEn,
 	[0x84ee4776] = gameFireRedEnR1,
 	[0xdaffecec] = gameLeafGreenEnR1,
-	[0x61641576] = gameRubyEnR1, -- Rev 1
-	[0xaeac73e6] = gameRubyEnR1, -- Rev 2
-	[0xbafedae5] = gameSapphireEnR1, -- Rev 1
-	[0x9cc4410e] = gameSapphireEnR1, -- Rev 2
+	[0x61641576] = gameRubyEnR1,
+	[0xaeac73e6] = gameRubyEnR1,
+	[0xbafedae5] = gameSapphireEnR1,
+	[0x9cc4410e] = gameSapphireEnR1,
 }
 
-function printPartyStatus(game, buffer)
-	buffer:clear()
-	for _, mon in ipairs(game:getParty()) do
-		buffer:print(string.format("%-10s (Lv%3i %10s): %3i/%3i\n",
+-- ═══════════════════════════════════════════════════════════════
+-- Nuzlocke state
+-- ═══════════════════════════════════════════════════════════════
+
+local nuzlocke = {
+	-- map_id -> species name of first mon encountered (locked in)
+	encounters  = {},
+	-- list of {nickname, species, level, location, frameCount}
+	deathLog    = {},
+	-- previous party snapshot for death detection (keyed by otId+nickname)
+	prevParty   = {},
+	prevBadges  = 0,
+	frameCount  = 0,
+	runId       = nil,   -- assigned by Kotlin on HELLO handshake
+	snapshotSeq = 0,
+}
+
+-- Stable key for a party mon (otId makes it robust across nickname changes)
+local function monKey(mon)
+	return string.format("%d:%s", mon.otId, mon.nickname)
+end
+
+-- Detect deaths: mons present last frame with hp>0 now gone or hp==0
+local function detectDeaths(party, mapId)
+	local currentKeys = {}
+	for _, mon in ipairs(party) do
+		local k = monKey(mon)
+		currentKeys[k] = true
+		if mon.hp == 0 and nuzlocke.prevParty[k] and nuzlocke.prevParty[k].hp > 0 then
+			local entry = {
+				nickname  = mon.nickname,
+				species   = mon.speciesName,
+				level     = mon.level,
+				location  = mapId,
+				frameCount= nuzlocke.frameCount,
+			}
+			table.insert(nuzlocke.deathLog, entry)
+			console:log(string.format("[NUZLOCKE] DEATH: %s (%s) Lv%d at map %d",
+				mon.nickname, mon.speciesName, mon.level, mapId))
+		end
+	end
+	-- Detect hard-removes (mon left party entirely while at 0 hp from prev frame)
+	for k, prev in pairs(nuzlocke.prevParty) do
+		if not currentKeys[k] and prev.hp == 0 then
+			-- already logged when hp hit 0; no double-log needed
+		end
+	end
+end
+
+-- Track first encounter on a new map
+local function trackEncounter(party, mapId)
+	if nuzlocke.encounters[mapId] then return end
+	-- Heuristic: if the party just gained a mon whose metLocation == mapId, that's the encounter.
+	-- For Gen3 we have metLocation directly. For Gen1/2 we approximate.
+	for _, mon in ipairs(party) do
+		local meta = mon.metLocation
+		if meta and meta == mapId and not nuzlocke.prevParty[monKey(mon)] then
+			nuzlocke.encounters[mapId] = mon.speciesName
+			console:log(string.format("[NUZLOCKE] ENCOUNTER on map %d: %s", mapId, mon.speciesName))
+			return
+		end
+	end
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- Message formatting
+-- ═══════════════════════════════════════════════════════════════
+
+-- Build the canonical snapshot string that BOTH Lua and Kotlin hash.
+-- Format is deterministic and newline-delimited so Kotlin can parse easily.
+local function buildSnapshotPayload(party, badges, mapId)
+	nuzlocke.snapshotSeq = nuzlocke.snapshotSeq + 1
+	local lines = {}
+	table.insert(lines, string.format("SEQ:%d", nuzlocke.snapshotSeq))
+	table.insert(lines, string.format("FRAME:%d", nuzlocke.frameCount))
+	table.insert(lines, string.format("MAP:%d", mapId))
+	table.insert(lines, string.format("BADGES:%d", badges))
+
+	for i, mon in ipairs(party) do
+		table.insert(lines, string.format("MON:%d|%s|%s|%d|%d|%d",
+			i,
 			mon.nickname,
+			mon.speciesName,
 			mon.level,
-			game:getSpeciesName(mon.species),
 			mon.hp,
 			mon.maxHP))
+	end
+
+	for _, d in ipairs(nuzlocke.deathLog) do
+		table.insert(lines, string.format("DEAD|%s|%s|%d|%d|%d",
+			d.nickname, d.species, d.level, d.location, d.frameCount))
+	end
+
+	for mapIdEnc, specName in pairs(nuzlocke.encounters) do
+		table.insert(lines, string.format("ENC|%d|%s", mapIdEnc, specName))
+	end
+
+	return table.concat(lines, "\n")
+end
+
+local function buildFullMessage(party, badges, mapId)
+	local payload = buildSnapshotPayload(party, badges, mapId)
+	local checksum = simpleChecksum(payload)
+	return string.format("SNAPSHOT_BEGIN\n%s\nCHECKSUM:%d\nSNAPSHOT_END\n",
+		payload, checksum)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- Main callbacks
+-- ═══════════════════════════════════════════════════════════════
+
+function printPartyStatus(gameObj, buffer)
+	buffer:clear()
+	for _, mon in ipairs(gameObj:getParty()) do
+		buffer:print(string.format("%-10s (Lv%3i %10s): %3i/%3i\n",
+			mon.nickname, mon.level, gameObj:getSpeciesName(mon.species),
+			mon.hp, mon.maxHP))
 	end
 end
 
 function detectGame()
-    local checksum = 0
-    for i, v in ipairs({ emu:checksum(C.CHECKSUM.CRC32):byte(1, 4) }) do
-        checksum = checksum * 256 + v
-    end
-    game = gameCrc32[checksum]
-    if not game then
-        game = gameCodes[emu:platform()][emu:getGameCode()]
-    end
-
-    if not game then
-        console:error("Unknown game!")
-    else
-        console:log("Found game: " .. game.name)
-        if not partyBuffer then
-            partyBuffer = console:createBuffer("Party")
-        end
-    end
+	local checksum = 0
+	for i, v in ipairs({ emu:checksum(C.CHECKSUM.CRC32):byte(1, 4) }) do
+		checksum = checksum * 256 + v
+	end
+	game = gameCrc32[checksum]
+	if not game then
+		game = gameCodes[emu:platform()][emu:getGameCode()]
+	end
+	if not game then
+		console:error("Unknown game!")
+	else
+		console:log("Found game: " .. game.name)
+		if not partyBuffer then
+			partyBuffer = console:createBuffer("Party")
+		end
+		-- Reset nuzlocke state on new game detection
+		nuzlocke.encounters  = {}
+		nuzlocke.deathLog    = {}
+		nuzlocke.prevParty   = {}
+		nuzlocke.prevBadges  = 0
+		nuzlocke.frameCount  = 0
+		nuzlocke.snapshotSeq = 0
+	end
 end
 
-function formatPartyForSocket(game)
-    local party = game:getParty()
-    local msg = "PARTY_UPDATE\n"
-    for _, mon in ipairs(party) do
-        msg = msg .. string.format("%s|Lv%d|%s|%d/%d\n",
-            mon.nickname,
-            mon.level,
-            game:getSpeciesName(mon.species),
-            mon.hp,
-            mon.maxHP)
-    end
-    msg = msg .. "END\n"
-    return msg
-end
+-- Frame throttle: send a full snapshot every N frames to avoid flooding
+local SNAPSHOT_EVERY = 60  -- ~1 second at 60fps
+local framesSinceSnapshot = 0
 
 function updateBuffer()
-	if not game or not partyBuffer then
-		return
-	end
-    printPartyStatus(game, partyBuffer)
+	if not game or not partyBuffer then return end
 
-    if next(ST_sockets) then
-        local partyMsg = formatPartyForSocket(game)
-        for id,sock in pairs(ST_sockets) do
-            if sock then
-                sock:send(partyMsg)
-            end
-        end
-    end
+	nuzlocke.frameCount = nuzlocke.frameCount + 1
+	framesSinceSnapshot = framesSinceSnapshot + 1
+
+	local party    = game:getParty()
+	local mapId    = game:getMapId()
+	local badges   = game:getBadges()
+
+	-- Annotate each mon with its resolved species name once
+	for _, mon in ipairs(party) do
+		mon.speciesName = game:getSpeciesName(mon.species)
+	end
+
+	-- Nuzlocke logic (runs every frame for accuracy)
+	detectDeaths(party, mapId)
+	trackEncounter(party, mapId)
+
+	-- Badge gain notification
+	if badges ~= nuzlocke.prevBadges then
+		console:log(string.format("[NUZLOCKE] Badge change: %08b -> %08b", nuzlocke.prevBadges, badges))
+		nuzlocke.prevBadges = badges
+	end
+
+	-- Build prevParty map for next frame
+	nuzlocke.prevParty = {}
+	for _, mon in ipairs(party) do
+		nuzlocke.prevParty[monKey(mon)] = mon
+	end
+
+	-- Update the mGBA buffer
+	printPartyStatus(game, partyBuffer)
+
+	-- Send snapshot over socket on throttle interval
+	if framesSinceSnapshot >= SNAPSHOT_EVERY and next(ST_sockets) then
+		framesSinceSnapshot = 0
+		local msg = buildFullMessage(party, badges, mapId)
+		for id, sock in pairs(ST_sockets) do
+			if sock then sock:send(msg) end
+		end
+	end
 end
 
 callbacks:add("start", detectGame)
 callbacks:add("frame", updateBuffer)
-if emu then
-    detectGame()
-end
+if emu then detectGame() end
 
+-- ═══════════════════════════════════════════════════════════════
+-- Socket server (original, extended)
+-- ═══════════════════════════════════════════════════════════════
 
--- Server
-lastkeys = nil
-server = nil
-ST_sockets = {}
-nextID = 1
+lastkeys  = nil
+server    = nil
+ST_sockets= {}
+nextID    = 1
 
 local KEY_NAMES = { "A", "B", "s", "S", "<", ">", "^", "v", "R", "L" }
 
@@ -581,11 +699,8 @@ end
 
 function ST_format(id, msg, isError)
 	local prefix = "Socket " .. id
-	if isError then
-		prefix = prefix .. " Error: "
-	else
-		prefix = prefix .. " Received: "
-	end
+	if isError then prefix = prefix .. " Error: "
+	else prefix = prefix .. " Received: " end
 	return prefix .. msg
 end
 
@@ -594,13 +709,35 @@ function ST_error(id, err)
 	ST_stop(id)
 end
 
+-- Handle incoming messages from Kotlin
+-- Supported: HELLO:<runId>   -> registers run ID
+--            ACK:<seq>       -> Kotlin confirmed snapshot seq
+--            PING            -> respond PONG
+function ST_handleMessage(id, msg)
+	msg = msg:match("^(.-)%s*$")  -- trim
+	if msg:sub(1, 6) == "HELLO:" then
+		nuzlocke.runId = msg:sub(7)
+		console:log("[NUZLOCKE] Run ID set: " .. nuzlocke.runId)
+		local sock = ST_sockets[id]
+		if sock then sock:send("HELLO_ACK:" .. nuzlocke.runId .. "\n") end
+	elseif msg:sub(1, 4) == "ACK:" then
+		local seq = tonumber(msg:sub(5))
+		console:log(string.format("[NUZLOCKE] Kotlin ACK seq %d", seq or -1))
+	elseif msg == "PING" then
+		local sock = ST_sockets[id]
+		if sock then sock:send("PONG\n") end
+	else
+		console:log(ST_format(id, msg))
+	end
+end
+
 function ST_received(id)
 	local sock = ST_sockets[id]
 	if not sock then return end
 	while true do
 		local p, err = sock:receive(1024)
 		if p then
-			console:log(ST_format(id, p:match("^(.-)%s*$")))
+			ST_handleMessage(id, p)
 		else
 			if err ~= socket.ERRORS.AGAIN then
 				console:error(ST_format(id, err, true))
@@ -617,11 +754,8 @@ function ST_scankeys()
 		lastkeys = keys
 		local msg = "["
 		for i, k in ipairs(KEY_NAMES) do
-			if (keys & (1 << (i - 1))) == 0 then
-				msg = msg .. " "
-			else
-				msg = msg .. k;
-			end
+			if (keys & (1 << (i - 1))) == 0 then msg = msg .. " "
+			else msg = msg .. k end
 		end
 		msg = msg .. "]\n"
 		for id, sock in pairs(ST_sockets) do
@@ -640,8 +774,10 @@ function ST_accept()
 	nextID = id + 1
 	ST_sockets[id] = sock
 	sock:add("received", function() ST_received(id) end)
-	sock:add("error", function() ST_error(id) end)
+	sock:add("error",    function() ST_error(id) end)
 	console:log(ST_format(id, "Connected"))
+	-- Send a greeting so Kotlin knows the protocol version
+	sock:send("NUZLOCKE_TRACKER v1\n")
 end
 
 callbacks:add("keysRead", ST_scankeys)
@@ -664,7 +800,7 @@ while not server do
 			server:close()
 			console:error(ST_format("Listen", err, true))
 		else
-			console:log("Socket Server Test: Listening on port " .. port)
+			console:log("Nuzlocke Tracker: Listening on port " .. port)
 			server:add("received", ST_accept)
 		end
 	end

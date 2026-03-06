@@ -1,8 +1,8 @@
 package org.example.project.ui.home
 
+import androidx.compose.animation.core.snap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import kotlinx.coroutines.Job
@@ -17,14 +17,19 @@ import io.ktor.client.request.get
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.example.project.SupabaseClient
+import org.example.project.data.RunRepository
+import org.example.project.data.network.NuzlockeSnapshot
 import org.example.project.domain.models.PokemonResponse
+import org.example.project.domain.models.PokemonTeamMember
 import org.example.project.launchMGBA
+import java.io.File
 import java.lang.Exception
 
-class HomeViewModel : ViewModel(){
+class HomeViewModel (
+    val runRepository: RunRepository = RunRepository()
+): ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
@@ -46,7 +51,7 @@ class HomeViewModel : ViewModel(){
 
     init {
         loadUserProfile()
-        loadSaveFileData()
+        observeCurrentRun()
     }
 
     private fun loadUserProfile(){
@@ -66,58 +71,63 @@ class HomeViewModel : ViewModel(){
         }
     }
 
-    private fun loadSaveFileData(){
+    private fun observeCurrentRun(){
         viewModelScope.launch {
-            try {
-                val saveData = readSaveFile("resources/roms/firered.save")
-                val saveBase = getActiveFireRedSaveBase(saveData)
-
-                val trainerSection = findSection(saveData,saveBase,0)
-                val teamItemSection = findSection(saveData,saveBase,1)
-                val teamSizeBytes = saveData.copyOfRange(
-                    teamItemSection + 0x0034,
-                    teamItemSection + 0x0034 + 1
-                )
-                val teamBytes = saveData.copyOfRange(
-                    teamItemSection + 0x0038,
-                    teamItemSection + 0x0038 + 600
-                )
-                val nameBytes = saveData.copyOfRange(trainerSection, trainerSection + 7)
-
-                val trainerName = decodeFRString(nameBytes)
-                val teamSize = teamSizeBytes.joinToString(" ") { it.toString() }.toInt()
-
-                // Load Pokemon team
-                val pokemonTeam = buildList {
-                    for (i in 0 until teamSize) {
-                        val start = i * 100
-                        val end = (i * 100) + 100
-                        add(teamBytes.copyOfRange(start, end))
+                runRepository.currentRun.collect{run ->
+                    if (run != null){
+                        loadRunData(run.id)
+                    }else{
+                        _uiState.update { it.copy(
+                            trainerName = "No run selected",
+                            pokemonTeamIcons = emptyList(),
+                            badges = "0/8",
+                            deaths = "0"
+                        ) }
                     }
                 }
+        }
+    }
 
-                // Load Pokemon icons
-                val icons = loadPokemonIcons(pokemonTeam)
+    private fun loadRunData(runId : String){
+        viewModelScope.launch {
+            try {
+                val run = runRepository.allRuns.value.firstOrNull{it.id == runId}
+                if (run == null){
+                    println("Run not found: $runId")
+                    return@launch
+                }
 
-                _uiState.update { it.copy(
-                    trainerName = trainerName,
-                    pokemonTeamIcons = icons,
-                    gameName = "Pokémon FireRed"
-                )}
-            } catch (e: Exception) {
-                println("Error loading save file: ${e.message}")
+                val result = runRepository.loadRunData(run)
+                result.onSuccess { runData ->
+                    val icons = loadPokemonIcons(runData.teamMembers)
+
+                    val updatedTeam = runData.teamMembers.mapIndexed { index, member ->
+                        member.copy(iconUrl = icons.getOrNull(index) ?: "")
+                    }
+
+                    runRepository.updateRunTeam(run.id,updatedTeam)
+
+                    _uiState.update { it.copy(
+                        trainerName = runData.trainerName,
+                        gameName = run.gameName,
+                        badges = "${run.badges}/8",
+                        deaths = run.deaths.toString(),
+                        pokemonTeamIcons = icons,
+                        currentRunId = run.id
+                    ) }
+                }.onFailure { error ->
+                    println("Error loading run data: ${error.message}")
+                }
+            }catch (e: kotlin.Exception){
+                println("Error in loadRunData: ${e.message}")
             }
         }
     }
 
-    private suspend fun loadPokemonIcons(pokemonTeam: List<ByteArray>): List<String> {
-        return runBlocking {
-            pokemonTeam.mapNotNull { pokemon ->
+    private suspend fun loadPokemonIcons(teamMembers: List<PokemonTeamMember>): List<String> {
+        return teamMembers.mapNotNull { member ->
                 try {
-                    val pokemonBytesName = pokemon.copyOfRange(0x08, 0x08 + 10)
-                    val name = decodeFRString(pokemonBytesName)
-                    val formattedName = name.trim().lowercase()
-
+                    val formattedName = member.species.trim().lowercase()
                     println("Loading icon for: $formattedName")
 
                     val response = pokeApiClient.get(
@@ -126,25 +136,68 @@ class HomeViewModel : ViewModel(){
                     val pokemonResponse: PokemonResponse = response.body()
                     pokemonResponse.sprites.versions.generation7.icons.front_default
                 } catch (e: Exception) {
-                    println("Error loading pokemon icon: ${e.message}")
+                    println("Error loading pokemon icon for ${member.species}: ${e.message}")
                     null
                 }
             }
+    }
+
+    fun createNewRun(saveFilePath: String){
+        viewModelScope.launch {
+            val result = runRepository.createRun(saveFilePath)
+            result.onSuccess { run ->
+                println("Created New Run : ${run.trainerName}")
+            }.onFailure { error ->
+                println("Error creating run : ${error.message}")
+            }
+        }
+    }
+
+    fun switchRun(runId: String){
+        viewModelScope.launch {
+            // Save current run's emulator state before switching
+            val currentRunId = uiState.value.currentRunId
+            if (currentRunId != null) {
+                runRepository.syncRunFromEmulator(currentRunId)
+                    .onFailure { println("Sync from emulator skipped: ${it.message}") }
+            }
+            runRepository.setActiveRun(runId)
+        }
+    }
+
+    fun setEmulatorSavePath(runId: String, emulatorSavePath: String) {
+        runRepository.setEmulatorPaths(runId, emulatorSavePath)
+        _uiState.update { it.copy(showEmulatorPathPrompt = false) }
+    }
+
+    fun changeRun(){
+        // TODO: Naviggate to trun selection process
+        println("Opening run selection..")
+
+        runRepository.allRuns.value.forEach { run ->
+            println("Run : ${run.trainerName} (${run.gameName}) - Active: ${run.isActive}")
         }
     }
 
     fun startTcpConnection() {
         connectionJob = viewModelScope.launch {
+            val runId = uiState.value.currentRunId
+
             tcpClient.connect(
+                runId = runId,
                 onLine = { line ->
+                    // Update party lines for live display
                     _uiState.update {
                         it.copy(
-                            partyLines = (it.partyLines + line).takeLast(100),
-                            isConnected = true
+                            partyLines = (it.partyLines + line).takeLast(100)
                         )
                     }
                 },
+                onSnapshot = { snapshot ->
+                    handleSnapshot(snapshot)
+                },
                 onError = { error ->
+                    println("Connection Error: ${error.message}")
                     _uiState.update {
                         it.copy(
                             connectionError = "Connection lost: ${error.message}",
@@ -156,6 +209,60 @@ class HomeViewModel : ViewModel(){
         }
     }
 
+    private fun handleSnapshot(snapshot: NuzlockeSnapshot) {
+        println("📸 Snapshot #${snapshot.sequence}")
+        println("   Badges: ${snapshot.badgeCount}/8")
+        println("   Party: ${snapshot.party.size}")
+        println("   Deaths: ${snapshot.deaths.size}")
+
+        val currentRunId = uiState.value.currentRunId ?: return
+
+        // Update repository stats
+        runRepository.updateRunStats(
+            runId = currentRunId,
+            badges = snapshot.badgeCount,
+            deaths = snapshot.deaths.size
+        )
+
+        // Update UI state with live data
+        _uiState.update { state ->
+            state.copy(
+                badges = "${snapshot.badgeCount}/8",
+                deaths = snapshot.deaths.size.toString(),
+                isConnected = true,
+                connectionError = null,
+            )
+        }
+
+        // Log deaths as they happen
+        snapshot.deaths.forEach { death ->
+            println("☠️ ${death.nickname} (${death.species}) Lv${death.level} died at location ${death.location}")
+        }
+    }
+
+
+
+    fun importRom(sourceFile: File) {
+        viewModelScope.launch {
+            val result = runRepository.importRom(sourceFile)
+            result.onSuccess { run ->
+                println("Successfully imported: ${run.trainerName}")
+                // Run is now active and will auto-load
+            }.onFailure { error ->
+                println("Error importing ROM: ${error.message}")
+                // TODO: Show error to user
+            }
+        }
+    }
+
+    /**
+     * Delete a run
+     */
+    fun deleteRun(runId: String) {
+        runRepository.deleteRun(runId, deleteFiles = false)
+        // Set deleteFiles = true if you want to also delete the save file
+    }
+
     fun stopTcpConnection() {
         connectionJob?.cancel()
         tcpClient.disconnect()
@@ -163,7 +270,22 @@ class HomeViewModel : ViewModel(){
     }
 
     fun launchGame() {
-        launchMGBA()
+        viewModelScope.launch {
+            val currentRunId = uiState.value.currentRunId
+            if (currentRunId != null) {
+                runRepository.syncRunFromEmulator(currentRunId)
+                    .onFailure { println("No Emulator save to pull(first launch is fine):${it.message}") }
+            }
+
+            if (currentRunId != null){
+                runRepository.syncRunToEmulator(currentRunId)
+                    .onFailure {
+                        _uiState.update { it.copy(showEmulatorPathPrompt = true) }
+                        return@launch
+                    }
+            }
+            launchMGBA()
+        }
     }
 
     fun findCasualMatch() {
@@ -174,11 +296,6 @@ class HomeViewModel : ViewModel(){
     fun findRankedMatch() {
         // TODO: Implement ranked match finding
         println("Finding ranked match...")
-    }
-
-    fun changeRun() {
-        // TODO: Implement run selection
-        println("Changing run...")
     }
 
     fun viewLeaderboards() {

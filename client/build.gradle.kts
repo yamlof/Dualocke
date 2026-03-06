@@ -63,6 +63,7 @@ kotlin {
             implementation(libs.kotlinx.coroutinesSwing)
             implementation(project(":core"))
             implementation(kotlin("stdlib"))
+            implementation(libs.androidx.material3.desktop)
 
             val ktor_version = "3.4.0"
             implementation("io.ktor:ktor-client-core:${ktor_version}")

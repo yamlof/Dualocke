@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 import org.example.project.data.FilePathProvider.getRomsDirectory
+import org.example.project.domain.models.BadgeSnapshot
 import org.example.project.domain.models.GameVersion
 import org.example.project.domain.models.PokemonRun
 import org.example.project.domain.models.PokemonTeamMember
@@ -17,7 +18,6 @@ class RunRepository (
 ){
     private val _currentRun = MutableStateFlow<PokemonRun?>(null)
     val currentRun : StateFlow<PokemonRun?> = _currentRun.asStateFlow()
-
     private val _allRuns = MutableStateFlow<List<PokemonRun>>(emptyList())
     val allRuns : StateFlow<List<PokemonRun>> = _allRuns.asStateFlow()
 
@@ -37,7 +37,7 @@ class RunRepository (
                 val jsonString = configFile.readText()
                 val runs = json.decodeFromString<List<PokemonRun>>(jsonString)
                 _allRuns.value = runs
-                _currentRun.value = runs.firstOrNull {it.isActive}!!
+                _currentRun.value = runs.firstOrNull {it.isActive}
             }
         } catch (e: Exception) {
             println("Error loading runs: ${e.message}")
@@ -45,13 +45,13 @@ class RunRepository (
         }
     }
 
-    private fun saveRuns(){
+    private fun saveRuns() {
         try {
-            val configFile = File(runsConfigPath)
+            val configFile = File(FilePathProvider.getRunsConfigPath())
             configFile.parentFile?.mkdirs()
             val jsonString = json.encodeToString(_allRuns.value)
             configFile.writeText(jsonString)
-        }catch (e: Exception){
+        } catch (e: Exception) {
             println("Error saving runs: ${e.message}")
         }
     }
@@ -59,14 +59,29 @@ class RunRepository (
     fun createRun(
         saveFilePath: String,
         gameVersion: GameVersion = GameVersion.FIRE_RED
-    ): Result<PokemonRun>{
+    ): Result<PokemonRun> {
         return try {
-            val saveData = SaveFileManager.readSaveFile(saveFilePath)
-            val saveBase = SaveFileManager.getActiveFireRedSaveBase(saveData)
 
-            val trainerSection = SaveFileManager.findSection(saveData,saveBase,0)
-            val nameBytes = saveData.copyOfRange(trainerSection,trainerSection+7)
-            val trainerName = FireRedTextDecoder.decodeFRString(nameBytes)
+            val saveFile = File(saveFilePath)
+
+            val trainerName = if (saveFile.exists() && saveFile.length() > 1000) {
+                try {
+                    val saveData = SaveFileManager.readSaveFile(saveFilePath)
+                    val saveBase = SaveFileManager.getActiveFireRedSaveBase(saveData)
+                    if (saveBase < 0) {
+                        "Unknown"
+                    } else {
+                        val trainerSection = SaveFileManager.findSection(saveData, saveBase, 0)
+                        val nameBytes = saveData.copyOfRange(trainerSection, trainerSection + 7)
+                        FireRedTextDecoder.decodeFRString(nameBytes)
+                    }
+                } catch (e: Exception) {
+                    println("⚠️ Could not read trainer name: ${e.message}")
+                    "Unknown"
+                }
+            } else {
+                "Unknown"
+            }
 
             val run = PokemonRun(
                 id = UUID.randomUUID().toString(),
@@ -85,31 +100,31 @@ class RunRepository (
             }
             saveRuns()
             Result.success(run)
-        }catch (e: Exception){
+        } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    fun createRunFromRom(
-        romFileName:String,
-        gameVersion: GameVersion = GameVersion.FIRE_RED
-    ): Result<PokemonRun>{
-        val romPath = FilePathProvider.getRomPath(romFileName)
-        val saveFileName = romFileName.replaceAfterLast('.',"sav")
-        val savePath = FilePathProvider.getSavePath(saveFileName)
 
-        if (!File(romPath).exists()){
+
+    fun createRunFromRom(
+        romFileName: String,
+        gameVersion: GameVersion = GameVersion.FIRE_RED
+    ): Result<PokemonRun> {
+        val romPath = FilePathProvider.getRomPath(romFileName)
+        val savePath = FilePathProvider.getRomPath(  // point to roms directory
+            romFileName.replaceAfterLast('.', "sav")
+        )
+
+        if (!File(romPath).exists()) {
             return Result.failure(Exception("ROM file not found: $romPath"))
         }
 
-        val saveFile = File(savePath)
-        if (!saveFile.exists()){
-            saveFile.createNewFile()
-            println("Created a new save file: $savePath")
-        }
-
-        return createRun(savePath,gameVersion)
+        // Don't create a save file here, mGBA will create it next to the ROM
+        return createRun(savePath, gameVersion)
     }
+
+
 
     fun importRom(
         sourceFile: File,
@@ -118,7 +133,7 @@ class RunRepository (
         return try {
             val importResult = FilePathProvider.importRom(sourceFile)
             if (importResult.isFailure){
-                return Result.failure(importResult.exceptionOrNull()!!)
+                return Result.failure(importResult.exceptionOrNull() ?: Exception("Unknown import error"))
             }
             val saveFilename = sourceFile.nameWithoutExtension + ".sav"
             val savePath = FilePathProvider.getSavePath(saveFilename)
@@ -142,11 +157,30 @@ class RunRepository (
 
     suspend fun loadRunData(run: PokemonRun): Result<RunData>{
         return try {
-            val saveData = SaveFileManager.readSaveFile(run.saveFilePath)
+
+
+            val activeSav = FilePathProvider.getActiveSavFile()
+
+            // Return empty data if no save file exists yet
+            if (activeSav == null || !activeSav.exists() || activeSav.length() < 1000) {
+                println("⚠️ No valid save file yet")
+                return Result.success(RunData(
+                    trainerName = "Unknown",
+                    teamMembers = emptyList(),
+                    rawTeamData = ByteArray(0)
+                ))
+            }
+
+            println("📖 Reading save from: ${activeSav.absolutePath}")
+            val saveData = SaveFileManager.readSaveFile(activeSav.absolutePath)
             val saveBase = SaveFileManager.getActiveFireRedSaveBase(saveData)
 
             val trainerSection = SaveFileManager.findSection(saveData,saveBase,0)
             val teamItemSection = SaveFileManager.findSection(saveData,saveBase,1)
+
+            val nameBytes = saveData.copyOfRange(trainerSection, trainerSection + 7)
+            val trainerName = FireRedTextDecoder.decodeFRString(nameBytes)
+            println("👤 Trainer name from save: $trainerName")
 
             val teamSizeBytes = saveData.copyOfRange(
                 teamItemSection + 0x0034,
@@ -173,7 +207,7 @@ class RunRepository (
                     PokemonTeamMember(
                         name = nickname.trim(),
                         species = nickname.trim(), // TODO: Get actual species
-                        level = 1, // TODO: Extract level from save
+                        level = pokemonData[0x54].toInt() and 0xFF, // TODO: Extract level from save
                         iconUrl = "" // Will be loaded separately
                     )
                 )
@@ -181,7 +215,7 @@ class RunRepository (
 
             Result.success(
                 RunData(
-                    trainerName = run.trainerName,
+                    trainerName = trainerName,
                     teamMembers = teamMembers,
                     rawTeamData = teamBytes
                 )
@@ -200,7 +234,7 @@ class RunRepository (
         }
 
         _allRuns.value = updatedRuns
-        _currentRun.value = updatedRuns.firstOrNull{it.isActive}!!
+        _currentRun.value = updatedRuns.firstOrNull{it.isActive}
         saveRuns()
     }
 
@@ -273,72 +307,55 @@ class RunRepository (
         saveRuns()
     }
 
-    /**
-     * Push our save file to the emulator's expected location.
-     * Call this when the user is about to play this run.
-     */
-    fun syncRunToEmulator(runId: String): Result<Unit> {
-        val run = _allRuns.value.firstOrNull { it.id == runId }
-            ?: return Result.failure(Exception("Run not found"))
-        val emulatorSavePath = run.emulatorSavePath
-            ?: return Result.failure(Exception("No emulator save path set for this run"))
-
-        return FilePathProvider.syncSaveToEmulator(run.saveFilePath, emulatorSavePath)
-    }
-
-    /**
-     * Pull the emulator's save back into our managed storage.
-     * Call this after the user finishes playing (before switching runs).
-     */
-    fun syncRunFromEmulator(runId: String): Result<Unit> {
-        val run = _allRuns.value.firstOrNull { it.id == runId }
-            ?: return Result.failure(Exception("Run not found"))
-        val emulatorSavePath = run.emulatorSavePath
-            ?: return Result.failure(Exception("No emulator save path set for this run"))
-
-        return FilePathProvider.syncSaveFromEmulator(emulatorSavePath, run.saveFilePath)
-    }
-
-    /**
-     * Set where this run's save should go when syncing to the emulator.
-     * The user picks this path once via a file chooser dialog.
-     */
-    fun setEmulatorPaths(
-        runId: String,
-        emulatorSavePath: String?,
-        emulatorRomPath: String? = null
-    ) {
+    fun saveBadgeSnapshot(runId: String, badgeNumber: Int, team: List<PokemonTeamMember>, deaths: Int) {
         val updatedRuns = _allRuns.value.map { run ->
             if (run.id == runId) {
-                run.copy(
-                    emulatorSavePath = emulatorSavePath,
-                    emulatorRomPath = emulatorRomPath
-                )
+                val alreadyExists = run.badgeSnapshots.any { it.badgeNumber == badgeNumber }
+                if (!alreadyExists) {
+                    println("📸 Saving badge $badgeNumber snapshot: ${team.size} pokemon, $deaths deaths")
+                    run.copy(
+                        badges = badgeNumber,
+                        badgeSnapshots = run.badgeSnapshots + BadgeSnapshot(
+                            badgeNumber = badgeNumber,
+                            team = team,
+                            deaths = deaths
+                        )
+                    )
+                } else {
+                    println("⏭️ Badge $badgeNumber snapshot already exists, skipping")
+                    run
+                }
             } else run
         }
         _allRuns.value = updatedRuns
-        if (_currentRun.value?.id == runId) {
-            _currentRun.value = updatedRuns.first { it.id == runId }
-        }
+        _currentRun.value = updatedRuns.firstOrNull { it.isActive }
         saveRuns()
     }
 
-    /**
-     * Convenience: sync current active run to emulator.
-     */
-    fun syncActiveRunToEmulator(): Result<Unit> {
-        val current = _currentRun.value
-            ?: return Result.failure(Exception("No active run"))
-        return syncRunToEmulator(current.id)
+    fun reloadForUser() {
+        val newPath = FilePathProvider.getRunsConfigPath()
+        println("🔄 reloadForUser path: $newPath")
+        println("🔄 File exists: ${File(newPath).exists()}")
+        println("🔄 File content: ${File(newPath).readText()}")
+        val configFile = File(newPath)
+        if (configFile.exists()) {
+            try {
+                val jsonString = configFile.readText()
+                val runs = json.decodeFromString<List<PokemonRun>>(jsonString)
+                _allRuns.value = runs
+                _currentRun.value = runs.firstOrNull { it.isActive }
+                println("🔄 Loaded ${runs.size} runs, active: ${_currentRun.value?.id}")
+            } catch (e: Exception) {
+                println("Error reloading runs: ${e.message}")
+                _allRuns.value = emptyList()
+                _currentRun.value = null
+            }
+        } else {
+            println("🔄 No runs file found at $newPath")
+            _allRuns.value = emptyList()
+            _currentRun.value = null
+        }
     }
-
-    fun syncActiveRunFromEmulator(): Result<Unit> {
-        val current = _currentRun.value
-            ?: return Result.failure(Exception("No active run"))
-        return syncRunFromEmulator(current.id)
-    }
-
-
 
 }
 
@@ -347,3 +364,4 @@ data class RunData(
     val teamMembers: List<PokemonTeamMember>,
     val rawTeamData: ByteArray
 )
+

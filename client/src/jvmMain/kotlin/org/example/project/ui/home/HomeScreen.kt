@@ -18,10 +18,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -35,9 +38,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,30 +52,29 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import monitor.ProcessMonitor
+import org.example.project.ui.home.components.GameLibraryDialog
 import org.example.project.ui.home.components.LivePartyDataSection
+import org.example.project.ui.home.components.MatchDialog
 import org.example.project.ui.home.components.MatchSection
 import org.example.project.ui.home.components.QuickActionGrid
 import org.example.project.ui.home.components.RunSelectionDialog
 import org.example.project.ui.home.components.SelectedRunCard
 import org.example.project.ui.home.components.SmallTopAppBar
 import org.example.project.ui.home.components.WelcomeSection
+import org.example.project.utils.getRankFromElo
 
 
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = remember { HomeViewModel() },
     onLogout: () -> Unit,
-
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val allRuns by viewModel.runRepository.allRuns.collectAsState()
     val scope = rememberCoroutineScope()
 
-    var showRunSelection by remember { mutableStateOf(false) }
+    var showGameLibrary by remember { mutableStateOf(false) }
 
-
-
-    // Handle TCP connection lifecycle
     DisposableEffect(Unit) {
         scope.launch {
             viewModel.startTcpConnection()
@@ -86,28 +91,135 @@ fun HomeScreen(
         onLaunchGame = { viewModel.launchGame() },
         onFindCasualMatch = { viewModel.findCasualMatch() },
         onFindRankedMatch = { viewModel.findRankedMatch() },
-        onChangeRun = { showRunSelection = true },
-        onViewLeaderboards = { viewModel.viewLeaderboards() },
+        onChangeRun = { showGameLibrary = true },
+        onViewLeaderboards = { viewModel.toggleLeaderboard() },
         onViewHistory = { viewModel.viewHistory() },
-        onViewCommunity = { viewModel.viewCommunity() },
+        onViewCommunity = { viewModel.toggleLeaderboard() },
         onOpenSettings = { viewModel.openSettings() }
     )
 
-    if (showRunSelection){
-        RunSelectionDialog(
-            allRuns = allRuns,
-            currentRunId = uiState.currentRunId,
-            onRunSelected = {runId ->
-                viewModel.switchRun(runId)
-            },
-            onImportRom = {file ->
-                viewModel.importRom(file)
-            },
-            onDeleteRun = {runId ->
-                viewModel.deleteRun(runId)
-            },
-            onDismiss = {showRunSelection=false }
+    if (showGameLibrary){
+        GameLibraryDialog(
+            onDismiss = { showGameLibrary = false },
+            onGameSelected = { viewModel.switchGame(it) },
+            onVerifyRom = { game, file -> viewModel.verifyRom(game, file) },
+            onSwitchSlot = { game, slot -> viewModel.switchGbaRun(game, slot) },
+            onCreateSlot = { game, name -> viewModel.createGbaRun(game, name) },
+            onDeleteSlot = { game, name -> viewModel.deleteGbaRun(game, name) },
+            verifiedGames = uiState.verifiedGames,
+            activeGame = uiState.activeGame,
+            activeSlot = uiState.activeGbaRun,
+            slotsByGame = uiState.slotsByGame
         )
+    }
+    if (uiState.showMatchDialog && uiState.currentMatch != null) {
+        MatchDialog(
+            match = uiState.currentMatch!!,
+            showdownUrl = uiState.showdownUrl,
+            onStartBattle = { viewModel.startShowdownMatch(uiState.currentMatch!!) },
+            onWin = { viewModel.reportWin() },
+            onLoss = { viewModel.reportLoss() },
+            onDismiss = { }
+        )
+    }
+
+    if (uiState.showMatchResult) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = {
+                Text(if (uiState.playerWon == true) "🏆 Victory!" else "💀 Defeated!")
+            },
+            text = {
+                Text(
+                    if (uiState.playerWon == true)
+                        "Congratulations! Your Elo has been updated."
+                    else
+                        "Better luck next time! Your Elo has been updated."
+                )
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.dismissMatchResult() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+
+    if (uiState.showLeaderboard) {
+        Dialog(onDismissRequest = { viewModel.toggleLeaderboard() }) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text(
+                        "🏆 Leaderboard",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    uiState.leaderboard.forEachIndexed { index, entry ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "#${index + 1}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = when(index) {
+                                    0 -> Color(0xFFFFD700) // gold
+                                    1 -> Color(0xFFC0C0C0) // silver
+                                    2 -> Color(0xFFCD7F32) // bronze
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                },
+                                modifier = Modifier.width(40.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    entry.username,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    getRankFromElo(entry.elo),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    "${entry.elo} ELO",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    "${entry.wins}W ${entry.losses}L",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        if (index < uiState.leaderboard.size - 1) {
+                            HorizontalDivider()
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = { viewModel.toggleLeaderboard() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Close")
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -160,7 +272,7 @@ private fun HomeScreenContent(
     onViewLeaderboards: () -> Unit,
     onViewHistory: () -> Unit,
     onViewCommunity: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
 ){
     Column(
         modifier = Modifier
@@ -186,7 +298,8 @@ private fun HomeScreenContent(
                 WelcomeSection(
                     username = uiState.username,
                     isLoading = uiState.isLoading,
-                    rank = uiState.rank
+                    rank = uiState.rank,
+                    elo = uiState.elo
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -197,8 +310,11 @@ private fun HomeScreenContent(
                     badges = uiState.badges,
                     deaths = uiState.deaths,
                     pokemonTeamIcon = uiState.pokemonTeamIcons,
+                    activeGame = uiState.activeGame,
+                    activeSlot = uiState.activeGbaRun,
                     onChangeRun = onChangeRun
                 )
+
 
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -220,6 +336,7 @@ private fun HomeScreenContent(
 
                 Button(
                     onClick = onLaunchGame,
+                    enabled = uiState.romLoaded && !uiState.isSwitchingRun && uiState.activeGbaRun != null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(64.dp),
@@ -228,17 +345,32 @@ private fun HomeScreenContent(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        "Launch Game",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
+                    if (uiState.isSwitchingRun) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            "Switching Run...",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            if (uiState.romLoaded) "Launch Game" else "No ROM Loaded",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -282,6 +414,7 @@ private fun HomeScreenContent(
                 LivePartyDataSection(
                     partyLines = uiState.partyLines,
                     isMgbaRunning = uiState.isConnected,
+                    snapshot = uiState.latestSnapshot,
                     modifier = Modifier.weight(1f)
                 )
             }

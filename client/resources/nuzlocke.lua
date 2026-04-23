@@ -63,9 +63,125 @@ end
 -- Returns an 8-bit integer; each bit = one badge earned.
 -- Gen 1 (RBY): 0xD356  Gen 2 (GS): 0xD57C / Crystal 0xD57C
 -- Gen 3 badge bytes differ per game and are set per-game below.
+-- Helper to check a flag from saveblock1
+local function FlagGet(flagId)
+    local saveBlock1 = emu:read32(0x03005008)
+    if saveBlock1 == 0 then return false end
+    -- Flags array starts at offset 0xEE0 in saveblock1 for FireRed
+    -- Each flag is 1 bit: byte = flagId >> 3, bit = flagId & 7
+    local byte = emu:read8(saveBlock1 + 0xEE0 + (flagId >> 3))
+    return ((byte >> (flagId & 7)) & 1) == 1
+end
+
 function Game.getBadges(game)
-	if not game._badgeAddress then return 0 end
-	return emu:read8(game._badgeAddress)
+    if not game._badgeAddress then return 0 end
+
+    if game._badgeAddress == true then
+        -- FireRed badge flags: 0x820 to 0x827
+        local count = 0
+        for flagId = 0x820, 0x827 do
+            if FlagGet(flagId) then
+                count = count + 1
+            end
+        end
+        return count
+    end
+
+    return emu:read8(game._badgeAddress)
+end
+
+local MAP_NAMES = {
+    -- Bank 1 (Dungeons)
+    [0x0001] = "Viridian Forest",
+    [0x0101] = "Mt Moon 1F",
+    [0x0201] = "Mt Moon B1F",
+    [0x0301] = "Mt Moon B2F",
+    [0x2701] = "Rock Tunnel 1F",
+    [0x2801] = "Rock Tunnel B1F",
+    [0x2901] = "Seafoam Islands 1F",
+    [0x2A01] = "Seafoam Islands B1F",
+    [0x2B01] = "Seafoam Islands B2F",
+    [0x2C01] = "Seafoam Islands B3F",
+    [0x2D01] = "Seafoam Islands B4F",
+    [0x2E01] = "Pokemon Tower 1F",
+    [0x2F01] = "Pokemon Tower 2F",
+    [0x3001] = "Pokemon Tower 3F",
+    [0x3101] = "Pokemon Tower 4F",
+    [0x3201] = "Pokemon Tower 5F",
+    [0x3301] = "Pokemon Tower 6F",
+    [0x3401] = "Pokemon Tower 7F",
+    [0x3501] = "Power Plant",
+    [0x3901] = "Victory Road 1F",
+    [0x3A01] = "Victory Road 2F",
+    [0x3B01] = "Victory Road 3F",
+    [0x4501] = "Cerulean Cave 1F",
+    [0x4601] = "Cerulean Cave 2F",
+    [0x4701] = "Cerulean Cave B1F",
+    [0x4801] = "Pokemon League - Lorelei",
+    [0x4901] = "Pokemon League - Bruno",
+    [0x4A01] = "Pokemon League - Agatha",
+    [0x4B01] = "Pokemon League - Lance",
+    [0x4C01] = "Pokemon League - Champion",
+
+    -- Bank 3 (Towns and Routes)
+    [0x0003] = "Pallet Town",
+    [0x0103] = "Viridian City",
+    [0x0203] = "Pewter City",
+    [0x0303] = "Cerulean City",
+    [0x0403] = "Lavender Town",
+    [0x0503] = "Vermilion City",
+    [0x0603] = "Celadon City",
+    [0x0703] = "Fuchsia City",
+    [0x0803] = "Cinnabar Island",
+    [0x0903] = "Indigo Plateau",
+    [0x0A03] = "Saffron City",
+    [0x0C03] = "One Island",
+    [0x0D03] = "Two Island",
+    [0x0E03] = "Three Island",
+    [0x0F03] = "Four Island",
+    [0x1003] = "Five Island",
+    [0x1103] = "Seven Island",
+    [0x1203] = "Six Island",
+    [0x1303] = "Route 1",
+    [0x1403] = "Route 2",
+    [0x1503] = "Route 3",
+    [0x1603] = "Route 4",
+    [0x1703] = "Route 5",
+    [0x1803] = "Route 6",
+    [0x1903] = "Route 7",
+    [0x1A03] = "Route 8",
+    [0x1B03] = "Route 9",
+    [0x1C03] = "Route 10",
+    [0x1D03] = "Route 11",
+    [0x1E03] = "Route 12",
+    [0x1F03] = "Route 13",
+    [0x2003] = "Route 14",
+    [0x2103] = "Route 15",
+    [0x2203] = "Route 16",
+    [0x2303] = "Route 17",
+    [0x2403] = "Route 18",
+    [0x2503] = "Route 19",
+    [0x2603] = "Route 20",
+    [0x2703] = "Route 21 North",
+    [0x2803] = "Route 21 South",
+    [0x2903] = "Route 22",
+    [0x2A03] = "Route 23",
+    [0x2B03] = "Route 24",
+    [0x2C03] = "Route 25",
+    [0x2D03] = "Kindle Road",
+    [0x2E03] = "Treasure Beach",
+    [0x2F03] = "Cape Brink",
+    [0x3003] = "Bond Bridge",
+
+    -- Bank 15 (Indoor Route 2)
+    [0x000F] = "Route 2 (Viridian Forest South Gate)",
+    [0x010F] = "Route 2 House",
+    [0x020F] = "Route 2 East Building",
+    [0x030F] = "Route 2 (Viridian Forest North Gate)",
+}
+
+local function getMapName(mapId)
+    return MAP_NAMES[mapId] or string.format("Unknown (%d:%d)", mapId >> 8, mapId & 0xFF)
 end
 
 -- ── Route / Map detection ─────────────────────────────────────────────────────
@@ -75,12 +191,21 @@ end
 --   Gen1: 1 byte at _mapAddress
 --   Gen2: 1 byte at _mapAddress
 --   Gen3: 2 bytes (little-endian) at _mapAddress (bank<<8|map or map16)
+-- Fix map reading using DMA pointer
+
 function Game.getMapId(game)
-	if not game._mapAddress then return 0 end
-	if game._mapIs16 then
-		return emu:read16(game._mapAddress)
-	end
-	return emu:read8(game._mapAddress)
+    if not game._mapAddress then return 0 end
+
+    if game._mapAddress == true then
+        local mapBank = emu:read8(0x02031DBC)
+        local mapNum = emu:read8(0x02031DBD)
+        return (mapNum << 8) | mapBank
+    end
+
+    if game._mapIs16 then
+        return emu:read16(game._mapAddress)
+    end
+    return emu:read8(game._mapAddress)
 end
 
 -- ── Checksum (simple, tamper-evident) ────────────────────────────────────────
@@ -436,9 +561,10 @@ local gameEmeraldEn = Generation3En:new{
 }
 
 local gameFireRedEn = Generation3En:new{
-	name="FireRed (USA)",
-	_party=0x2024284, _partyCount=0x2024029, _speciesNameTable=0x245ee0,
-	_badgeAddress=0x20257C8, _mapAddress=0x3004F00, _mapIs16=true,
+    name="FireRed (USA)",
+    _party=0x2024284, _partyCount=0x2024029, _speciesNameTable=0x245ee0,
+    _badgeAddress=true,  -- signals to use DMA pointer method
+    _mapAddress=true, _mapIs16=false,
 }
 
 local gameFireRedEnR1 = gameFireRedEn:new{
@@ -533,17 +659,146 @@ end
 
 -- Track first encounter on a new map
 local function trackEncounter(party, mapId)
-	if nuzlocke.encounters[mapId] then return end
-	-- Heuristic: if the party just gained a mon whose metLocation == mapId, that's the encounter.
-	-- For Gen3 we have metLocation directly. For Gen1/2 we approximate.
-	for _, mon in ipairs(party) do
-		local meta = mon.metLocation
-		if meta and meta == mapId and not nuzlocke.prevParty[monKey(mon)] then
-			nuzlocke.encounters[mapId] = mon.speciesName
-			console:log(string.format("[NUZLOCKE] ENCOUNTER on map %d: %s", mapId, mon.speciesName))
-			return
-		end
-	end
+    if nuzlocke.encounters[mapId] then return end
+    -- Heuristic: if the party just gained a mon whose metLocation == mapId, that's the encounter.
+    -- For Gen3 we have metLocation directly. For Gen1/2 we approximate.
+    for _, mon in ipairs(party) do
+        local meta = mon.metLocation
+        if meta and meta == mapId and not nuzlocke.prevParty[monKey(mon)] then
+            nuzlocke.encounters[mapId] = mon.speciesName
+            console:log(string.format("[NUZLOCKE] ENCOUNTER on map %d: %s", mapId, mon.speciesName))
+            return
+        end
+    end
+end
+
+-- ─── Encounter tracking ───────────────────────────────────────────────────────
+
+local ENCOUNTER_STATUS = {
+    NONE = "none",
+    IN_BATTLE = "in_battle",   -- currently in a wild battle on this route
+    CAUGHT = "caught",          -- successfully caught
+    FAILED = "failed"           -- ran away, fainted, or used no balls
+}
+
+-- Track encounter state per map
+-- encounters[mapId] = { status, species, nickname }
+nuzlocke.encounterStatus = {}
+
+-- Detect if we're in a wild battle
+-- In Gen 3, battle type is at a known address
+local function isInWildBattle()
+    local battleFlags = emu:read32(0x02022B4C)
+    local battleType = emu:read16(0x020386AC)
+    return battleFlags == 0x04 and battleType == 0
+end
+
+
+local prevInBattle = false
+local battleStartMap = nil
+local battleEnemy = nil
+local lastOverworldMap = 0
+local partyAtBattleStart = {}
+
+local partyAtBattleStart = {}
+
+local function updateEncounterTracking(party, mapId)
+    local inBattle = isInWildBattle()
+
+    if inBattle ~= prevInBattle then
+        console:log(string.format("[STATE] inBattle changed: %s -> %s",
+            tostring(prevInBattle), tostring(inBattle)))
+    end
+
+    if not inBattle and mapId ~= 0 then
+        lastOverworldMap = mapId
+        console:log(string.format("[MAP] Updated lastOverworldMap: %d (%s)",
+            lastOverworldMap, getMapName(lastOverworldMap)))
+    end
+
+    if nuzlocke.frameCount % 60 == 0 then
+        console:log(string.format("[ENCOUNTER] inBattle: %s, mapId: %d, prevInBattle: %s",
+            tostring(inBattle), mapId, tostring(prevInBattle)))
+    end
+
+    if inBattle and not prevInBattle then
+
+        console:log(string.format("[POKEDEX] hasPokedex: %s", tostring(hasPokedex())))
+
+
+        if not hasPokedex() then
+                prevInBattle = inBattle
+                return
+        end
+        -- Save party snapshot at battle start
+        partyAtBattleStart = {}
+        for _, mon in ipairs(party) do
+            partyAtBattleStart[monKey(mon)] = true
+        end
+
+        console:log(string.format("[ENCOUNTER] Battle started on map %d (%s)!",
+            lastOverworldMap, getMapName(lastOverworldMap)))
+        battleStartMap = lastOverworldMap
+
+        local battleType = emu:read16(0x020386AC)
+        console:log(string.format("[ENCOUNTER] Battle type: %d", battleType))
+
+        if battleType ~= 0 then
+            console:log("[ENCOUNTER] Trainer battle, skipping encounter tracking")
+            prevInBattle = inBattle
+            return
+        end
+
+        if not nuzlocke.encounterStatus[lastOverworldMap] then
+            local enemyMon = game:_readBoxMon(0x0202402C)
+            local enemySpecies = "Unknown"
+            if enemyMon and enemyMon.species and enemyMon.species > 0 and enemyMon.species < 252 then
+                enemySpecies = game:getSpeciesName(enemyMon.species)
+            end
+            console:log(string.format("[SPECIES] species=%d name=%s",
+                enemyMon and enemyMon.species or -1, enemySpecies))
+            battleEnemy = enemySpecies
+            nuzlocke.encounterStatus[lastOverworldMap] = {
+                status = ENCOUNTER_STATUS.IN_BATTLE,
+                species = enemySpecies,
+                nickname = nil
+            }
+            console:log(string.format("[NUZLOCKE] New encounter on map %d: %s",
+                lastOverworldMap, enemySpecies))
+        end
+    end
+
+    if not inBattle and prevInBattle then
+        console:log(string.format("[ENCOUNTER] Battle ended on map %d (%s)!",
+            battleStartMap or 0, getMapName(battleStartMap or 0)))
+
+        if battleStartMap ~= nil then
+            local enc = nuzlocke.encounterStatus[battleStartMap]
+            if enc and enc.status == ENCOUNTER_STATUS.IN_BATTLE then
+                local caught = false
+                for _, mon in ipairs(party) do
+                    if not partyAtBattleStart[monKey(mon)] then
+                        enc.status = ENCOUNTER_STATUS.CAUGHT
+                        enc.nickname = mon.nickname
+                        enc.species = game:getSpeciesName(mon.species)
+                        caught = true
+                        console:log(string.format("[NUZLOCKE] Caught %s (%s) on map %d",
+                            mon.nickname, enc.species, battleStartMap))
+                        break
+                    end
+                end
+                if not caught then
+                    enc.status = ENCOUNTER_STATUS.FAILED
+                    console:log(string.format("[NUZLOCKE] Failed encounter on map %d: %s got away",
+                        battleStartMap, enc.species or "?"))
+                end
+            end
+            battleStartMap = nil
+            battleEnemy = nil
+        end
+    end
+
+    prevInBattle = inBattle
 end
 
 -- ═══════════════════════════════════════════════════════════════
@@ -575,9 +830,18 @@ local function buildSnapshotPayload(party, badges, mapId)
 			d.nickname, d.species, d.level, d.location, d.frameCount))
 	end
 
-	for mapIdEnc, specName in pairs(nuzlocke.encounters) do
-		table.insert(lines, string.format("ENC|%d|%s", mapIdEnc, specName))
-	end
+    for mapIdEnc, specName in pairs(nuzlocke.encounters) do
+        table.insert(lines, string.format("ENC|%d|%s", mapIdEnc, specName))
+    end
+
+    for mapIdEnc, enc in pairs(nuzlocke.encounterStatus) do
+        table.insert(lines, string.format("ENCV2|%d|%s|%s|%s",
+            mapIdEnc,
+            enc.species or "?",
+            enc.nickname or "",
+            enc.status
+        ))
+    end
 
 	return table.concat(lines, "\n")
 end
@@ -632,6 +896,34 @@ end
 local SNAPSHOT_EVERY = 60  -- ~1 second at 60fps
 local framesSinceSnapshot = 0
 
+local function toBinary(num)
+    local t = {}
+    for i = 7, 0, -1 do
+        local bit = (num >> i) & 1
+        table.insert(t, bit)
+    end
+    return table.concat(t)
+end
+
+local function hasPokeballs()
+    -- Bag pocket 0 is items, pocket 1 is pokeballs
+    -- Pokeball item ID is 0x001 (4 in decimal)
+    local bagBase = emu:read32(0x03005008) + 0x560
+    local ballPocketCount = emu:read16(bagBase + 0x640) -- ball pocket item count
+    return ballPocketCount > 0
+end
+
+function hasPokedex()
+    -- Flag 0x820 = got starter, flag 0x2B0 = got pokedex
+    local saveblock1 = emu:read32(0x03005008)
+        -- Ball pocket item count at saveblock1 + 0x0430
+    local ballPocketCount = emu:read16(saveblock1 + 0x0430)
+    console:log(string.format("[POKEBALL] Ball count: %d", ballPocketCount))
+    return ballPocketCount > 0
+
+
+end
+
 function updateBuffer()
 	if not game or not partyBuffer then return end
 
@@ -648,14 +940,30 @@ function updateBuffer()
 	end
 
 	-- Nuzlocke logic (runs every frame for accuracy)
-	detectDeaths(party, mapId)
-	trackEncounter(party, mapId)
+    detectDeaths(party, mapId)
+    updateEncounterTracking(party, mapId)  -- replace trackEncounter with this
 
-	-- Badge gain notification
-	if badges ~= nuzlocke.prevBadges then
-		console:log(string.format("[NUZLOCKE] Badge change: %08b -> %08b", nuzlocke.prevBadges, badges))
-		nuzlocke.prevBadges = badges
-	end
+
+    -- Badge gain notification
+
+    if badges ~= nuzlocke.prevBadges then
+        console:log(string.format(
+            "[NUZLOCKE] Badge change: %s -> %s",
+            toBinary(nuzlocke.prevBadges),
+            toBinary(badges)
+        ))
+        nuzlocke.prevBadges = badges
+
+        -- Send immediate snapshot on badge gain
+        local msg = buildFullMessage(party, badges, mapId)
+        for id, sock in pairs(ST_sockets) do
+            if sock then sock:send(msg) end
+        end
+        framesSinceSnapshot = 0  -- reset throttle
+        console:log("[NUZLOCKE] Immediate snapshot sent for badge gain")
+    end
+
+
 
 	-- Build prevParty map for next frame
 	nuzlocke.prevParty = {}

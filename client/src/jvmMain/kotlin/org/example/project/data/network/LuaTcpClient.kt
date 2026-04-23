@@ -1,11 +1,14 @@
 package org.example.project.data.network
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -22,12 +25,47 @@ class LuaTcpClient (
     private var reader: BufferedReader? = null
     private var writer: PrintWriter? = null
     private var isConnected = false
+    private var reconnectJob: Job? = null
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
     private val _latestSnapshot = MutableStateFlow<NuzlockeSnapshot?>(null)
     val latestSnapshot: StateFlow<NuzlockeSnapshot?> = _latestSnapshot.asStateFlow()
+
+    fun startWithReconnect(
+        scope: CoroutineScope,
+        runId: String? = null,
+        onLine: ((String) -> Unit)? = null,
+        onSnapshot: ((NuzlockeSnapshot) -> Unit)? = null,
+        onConnected: (() -> Unit)? = null,
+        onDisconnected: (() -> Unit)? = null
+    ) {
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            while (isActive) {
+                try {
+                    connect(
+                        runId = runId,
+                        onLine = onLine,
+                        onSnapshot = onSnapshot,
+                        onConnected = onConnected,  // add this
+                        onError = null
+                    )
+                    onDisconnected?.invoke()
+                } catch (e: Exception) {
+                    // connection failed, will retry
+                }
+
+                if (isActive) {
+                    println("[TCP] Retrying in 3 seconds...")
+                    _connectionState.value = ConnectionState.DISCONNECTED
+                    onDisconnected?.invoke()
+                    delay(3000)
+                }
+            }
+        }
+    }
 
     /**
      * Connect to the mGBA Lua script
@@ -40,6 +78,7 @@ class LuaTcpClient (
         runId: String? = null,
         onLine: ((String) -> Unit)? = null,
         onSnapshot: ((NuzlockeSnapshot) -> Unit)? = null,
+        onConnected: (() -> Unit)? = null,  // add this
         onError: ((Exception) -> Unit)? = null
     ) = withContext(Dispatchers.IO) {
         try {
@@ -57,6 +96,8 @@ class LuaTcpClient (
             // Read greeting
             val greeting = reader?.readLine()
             println("[TCP] Server: $greeting")
+
+            onConnected?.invoke()  // notify that we're connected
 
             // Send HELLO with run ID if provided
             if (runId != null) {
@@ -136,7 +177,8 @@ class LuaTcpClient (
         var checksum: Long? = null
         val party = mutableListOf<PartyMon>()
         val deaths = mutableListOf<Death>()
-        val encounters = mutableMapOf<Int, String>()
+        val encounters = mutableMapOf<Int, EncounterInfo>()
+
 
         for (line in lines) {
             when {
@@ -179,13 +221,21 @@ class LuaTcpClient (
                         ))
                     }
                 }
-                line.startsWith("ENC|") -> {
+                line.startsWith("ENCV2|") -> {
                     // Format: ENC|15|Pidgey
-                    val parts = line.substringAfter("ENC|").split("|")
-                    if (parts.size >= 2) {
+                    val parts = line.substringAfter("ENCV2|").split("|")
+                    if (parts.size >= 4) {
                         val encMapId = parts[0].toIntOrNull() ?: 0
-                        encounters[encMapId] = parts[1]
+                        val species = parts[1]
+                        val nickname = parts[2].ifEmpty { null }
+                        val status = parts[3]
+                        encounters[encMapId] = EncounterInfo(
+                            species = species,
+                            nickname = nickname,
+                            status = status
+                        )
                     }
+
                 }
                 line.startsWith("CHECKSUM:") -> {
                     checksum = line.substringAfter("CHECKSUM:").toLongOrNull()
@@ -201,7 +251,7 @@ class LuaTcpClient (
             badgeCount = badges.countOneBits(),
             party = party,
             deaths = deaths,
-            encounters = encounters,
+            encounters = encounters.toMap(),
             checksum = checksum
         )
     }
@@ -267,7 +317,7 @@ data class NuzlockeSnapshot(
     val badgeCount: Int,
     val party: List<PartyMon>,
     val deaths: List<Death>,
-    val encounters: Map<Int, String>,
+    val encounters: Map<Int, EncounterInfo> = emptyMap(),
     val checksum: Long?
 )
 
@@ -296,3 +346,13 @@ data class Death(
     val location: Int,
     val frameCount: Long
 )
+
+data class EncounterInfo(
+    val species: String,
+    val nickname: String? = null,
+    val status: String  // "in_battle", "caught", "failed", "none"
+) {
+    val isCaught get() = status == "caught"
+    val isFailed get() = status == "failed"
+    val isInBattle get() = status == "in_battle"
+}

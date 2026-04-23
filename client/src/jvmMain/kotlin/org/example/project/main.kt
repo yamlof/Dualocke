@@ -1,29 +1,20 @@
 package org.example.project
 
 import androidx.compose.material.MaterialTheme
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import io.github.jan.supabase.auth.Auth
-import io.github.jan.supabase.auth.auth
-import io.github.jan.supabase.auth.providers.builtin.Email
-import io.github.jan.supabase.createSupabaseClient
-import io.github.jan.supabase.postgrest.Postgrest
-import io.github.jan.supabase.postgrest.from
-import io.github.jan.supabase.serializer.KotlinXSerializer
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import org.example.project.ui.auth.LoginScreen
 import org.example.project.ui.auth.RegisterScreen
+import org.example.project.ui.auth.TitleScreen
 import org.example.project.ui.home.HomeScreen
-import org.example.project.ui.home.rememberPartyViewModel
-
+import org.example.project.data.network.SupabaseClient
 
 @Serializable
 object LoginScreenDestination
@@ -34,6 +25,81 @@ object RegisterScreenDestination
 @Serializable
 object HomeScreenDestination
 
+// Data classes for matchmaking
+
+@Serializable
+data class MatchQueueInsert(
+   val player_id: String,
+    val badge_count: Int,
+    val team: JsonArray,
+    val deaths: Int = 0,
+    val elo: Int = 1000,
+    val is_bot: Boolean = false
+)
+
+@Serializable
+data class MatchQueueEntry(
+    val player_id: String,
+    val badge_count: Int,
+    val team: JsonArray,
+    val deaths: Int = 0,
+    val elo: Int = 1000,
+    val is_bot: Boolean = false,
+    val id: String? = null
+)
+
+@Serializable
+data class MatchInsert(
+    val player1_id: String,
+    val player2_id: String,
+    val player1_team: JsonArray,
+    val player2_team: JsonArray,
+    val player1_deaths: Int = 0,
+    val player2_deaths: Int = 0,
+    val badge_count: Int,
+    val player1_elo_before: Int = 1000,
+    val player2_elo_before: Int = 1000,
+    val status: String = "pending"
+)
+
+@Serializable
+data class Match(
+    val id: String? = null,
+    val player1_id: String,
+    val player2_id: String,
+    val player1_team: JsonArray,
+    val player2_team: JsonArray,
+    val player1_deaths: Int = 0,
+    val player2_deaths: Int = 0,
+    val badge_count: Int,
+    val showdown_room_id: String? = null,
+    val winner_id: String? = null,
+    val player1_elo_before: Int = 1000,
+    val player2_elo_before: Int = 1000,
+    val player1_elo_after: Int? = null,
+    val player2_elo_after: Int? = null,
+    val status: String = "pending"
+)
+
+@Serializable
+data class PlayerRating(
+    val id: String? = null,
+    val player_id: String,
+    val elo: Int = 1000,
+    val matches_played: Int = 0,
+    val wins: Int = 0,
+    val losses: Int = 0
+)
+
+@Serializable
+data class PlayerRatingInsert(
+    val player_id: String,
+    val elo: Int = 1000,
+    val matches_played: Int = 0,
+    val wins: Int = 0,
+    val losses: Int = 0
+)
+
 @Serializable
 data class Profile (
     val id : String,
@@ -41,67 +107,18 @@ data class Profile (
     val username : String
 )
 
+@Serializable
+data class LeaderboardEntry(
+    val player_id: String,
+    val elo: Int,
+    val matches_played: Int,
+    val wins: Int,
+    val losses: Int,
+    val username: String = ""
+)
 
-object SupabaseClient {
-    val client = createSupabaseClient(
-        supabaseKey = "sb_publishable_P6DJHLxxuvWKgmFcK5rS1w_PwQUsc49",
-        supabaseUrl = "https://jeiuhnrcakstcwenurci.supabase.co"
-    ){
-        install(Auth)
-        install(Postgrest)
+@Serializable object TitleScreenDestination
 
-        defaultSerializer = KotlinXSerializer(Json {
-            ignoreUnknownKeys = true
-            isLenient = true
-            encodeDefaults = true
-        })
-    }
-
-    suspend fun register (email:String, username : String,password:String, ) {
-        val result = client.auth.signUpWith(Email){
-            this.email = email
-            this.password = password
-        }
-
-        val userId = client.auth.currentUserOrNull()?.id ?: error("user not available")
-
-        client.from("profiles")
-            .insert(
-                Profile(
-                    id = userId,
-                    email = email,
-                    username = username
-                )
-            )
-    }
-
-    suspend fun login (email: String, password: String ){
-        client.auth.signInWith(Email){
-            this.email = email
-            this.password = password
-        }
-    }
-
-    suspend fun logout() {
-        client.auth.signOut()
-    }
-
-    suspend fun getUsername(): Profile? {
-        val user = client.auth.currentUserOrNull() ?: return null
-
-        return client
-            .from("profiles")
-            .select {
-                filter {
-                    eq("id",user.id)
-                }
-            }
-            .decodeSingleOrNull<Profile>()
-
-    }
-
-    fun session() = client.auth.currentSessionOrNull()
-}
 
 fun main() = application {
     Window(
@@ -109,21 +126,27 @@ fun main() = application {
         title = "Dualocke",
     ) {
         MaterialTheme {
-
             val navController = rememberNavController()
             val scope = rememberCoroutineScope()
-            val viewModel = rememberPartyViewModel()
-            val isMgbaRunning by viewModel.isMgbaRunning.collectAsState()
-            val partyLines by viewModel.partyLines.collectAsState()
-
-            val startDestination = if (SupabaseClient.session() == null)
-                LoginScreenDestination else HomeScreenDestination
+            val startDestination = TitleScreenDestination
 
             NavHost(navController = navController, startDestination = startDestination) {
+                composable<TitleScreenDestination> {
+                    TitleScreen(
+                        onLoginClick = {
+                            navController.navigate(LoginScreenDestination)
+                        },
+                        onRegisterClick = {
+                            navController.navigate(RegisterScreenDestination)
+                        },
+                    )
+                }
                 composable<LoginScreenDestination> {
                     LoginScreen(
                         onLoginSuccess = {
-                            navController.navigate(HomeScreenDestination)
+                            navController.navigate(HomeScreenDestination) {
+                                popUpTo(TitleScreenDestination) { inclusive = true }
+                            }
                         },
                         onRegisterClick = {
                             navController.navigate(RegisterScreenDestination)
@@ -134,7 +157,9 @@ fun main() = application {
                 composable<RegisterScreenDestination> {
                     RegisterScreen(
                         onRegisterSuccess = {
-                            navController.popBackStack()
+                            navController.navigate(HomeScreenDestination) {
+                                popUpTo(TitleScreenDestination) { inclusive = true }
+                            }
                         }
                     )
                 }
@@ -144,12 +169,11 @@ fun main() = application {
                         onLogout = {
                             scope.launch {
                                 SupabaseClient.logout()
-                                navController.navigate(LoginScreenDestination) {
+                                navController.navigate(TitleScreenDestination) {
                                     popUpTo(HomeScreenDestination) { inclusive = true }
                                 }
                             }
-                        },
-                        //isMgbaRunning = isMgbaRunning
+                        }
                     )
                 }
             }

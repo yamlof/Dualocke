@@ -5,7 +5,6 @@ import kotlin.collections.get
 
 object FireRedTextDecoder {
     private val frCharset = mapOf(
-        // Space and punctuation
         0x00 to " ",
         0x01 to "À",
         0x02 to "Á",
@@ -79,7 +78,6 @@ object FireRedTextDecoder {
         0x85 to "<",
         0x86 to ">",
 
-        // Uppercase letters A-Z
         0xBB to "A",
         0xBC to "B",
         0xBD to "C",
@@ -107,7 +105,6 @@ object FireRedTextDecoder {
         0xD3 to "Y",
         0xD4 to "Z",
 
-        // Lowercase letters a-z
         0xD5 to "a",
         0xD6 to "b",
         0xD7 to "c",
@@ -135,7 +132,6 @@ object FireRedTextDecoder {
         0xED to "y",
         0xEE to "z",
 
-        // Numbers 0-9
         0xA1 to "0",
         0xA2 to "1",
         0xA3 to "2",
@@ -147,7 +143,6 @@ object FireRedTextDecoder {
         0xA9 to "8",
         0xAA to "9",
 
-        // Punctuation
         0xAB to "!",
         0xAC to "?",
         0xAD to ".",
@@ -165,11 +160,10 @@ object FireRedTextDecoder {
         0xB9 to "×",
         0xBA to "/",
 
-        // Control characters
-        0xFC to "\n",  // Newline
-        0xFD to "\n",  // Prompt for next page
-        0xFE to "\n",  // Buffer
-        0xFF to ""     // String terminator
+        0xFC to "\n",
+        0xFD to "\n",
+        0xFE to "\n",
+        0xFF to ""
     )
 
     fun decodeFRString(bytes: ByteArray): String =

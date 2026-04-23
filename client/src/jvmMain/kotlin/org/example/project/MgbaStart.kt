@@ -1,5 +1,6 @@
 package org.example.project
 
+import org.example.project.data.FilePathProvider
 import java.io.File
 import java.lang.System.getProperty
 
@@ -9,21 +10,20 @@ fun launchMGBA(): Process {
     val isMac = os.contains("mac") || os.contains("darwin")
     val isLinux = os.contains("linux")
 
-    val baseDir = File("resources")
     val mgbaDir = if (isMac) File("resources/mac") else File("resources/linux")
-    val romsDir = File("resources")
-    val scriptDir = File("resources")
+    val luaScript = File("resources").resolve("nuzlocke.lua")
 
     val mgbaBinary = when {
         isMac -> File("resources/mac/mGBA.app/Contents/MacOS/mGBA")
         isLinux -> File("resources/linux/mGBAtrueone.appimage")
-        else -> throw UnsupportedOperationException("unsupported OS: ${os}")
+        else -> throw UnsupportedOperationException("Unsupported OS: $os")
     }
-    val rom = romsDir.resolve("roms/firered.gba")
-    val luaScript = scriptDir.resolve("nuzlocke.lua")
+
+    val rom = FilePathProvider.getActiveRomFile()
+        ?: throw IllegalStateException("No ROM loaded. Import a ROM first.")
+
 
     require(mgbaBinary.exists()) { "mGBA binary not found: ${mgbaBinary.absolutePath}" }
-    require(rom.exists()) { "ROM not found: ${rom.absolutePath}" }
     require(luaScript.exists()) { "Lua script not found: ${luaScript.absolutePath}" }
 
     mgbaBinary.setExecutable(true)
@@ -34,7 +34,6 @@ fun launchMGBA(): Process {
         rom.absolutePath
     )
     pb.directory(mgbaDir)
-
     pb.redirectErrorStream(true)
 
     return pb.start()

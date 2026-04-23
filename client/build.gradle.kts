@@ -78,6 +78,8 @@ kotlin {
             implementation("io.github.jan-tennert.supabase:realtime-kt:3.0.0")
             //implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
             //implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+            implementation("io.ktor:ktor-client-websockets:3.0.0")
+
         }
     }
 }

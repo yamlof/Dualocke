@@ -1,45 +1,11 @@
 package org.example.project.data
 
-import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
+import org.example.project.domain.models.GameVersion
 import java.io.File
 import java.nio.file.Paths
 
 object FilePathProvider {
-
     private const val APP_NAME = "Dualocke"
-    private const val EMULATOR_PATHS_KEY = "emulator_paths.json"
-
-    fun getEmulatorPathsFile() : File{
-        return File(getDataDirectory(),EMULATOR_PATHS_KEY)
-    }
-
-    fun syncSaveToEmulator(ourSavePath: String, emulatorSavePath: String): Result<Unit> {
-        return try {
-            val source = File(ourSavePath)
-            val dest = File(emulatorSavePath)
-            if (!source.exists()) return Result.failure(Exception("Save not found: $ourSavePath"))
-            dest.parentFile?.mkdirs()
-            source.copyTo(dest, overwrite = true)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    fun syncSaveFromEmulator(emulatorSavePath: String, ourSavePath: String): Result<Unit> {
-        return try {
-            val source = File(emulatorSavePath)
-            val dest = File(ourSavePath)
-            if (!source.exists()) return Result.failure(Exception("Emulator save not found: $emulatorSavePath"))
-            dest.parentFile?.mkdirs()
-            source.copyTo(dest, overwrite = true)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-
 
     fun getAppDataDirectory(): File{
         val userHome = System.getProperty("user.home")
@@ -71,9 +37,6 @@ object FilePathProvider {
         return dataDir
     }
 
-    fun getRunsConfigPath(): String{
-        return File(getDataDirectory(), "runs.json").absolutePath
-    }
 
     fun getRomsDirectory(): File{
         val romsDir = File(getDataDirectory(),"roms")
@@ -89,6 +52,30 @@ object FilePathProvider {
             saveDir.mkdirs()
         }
         return saveDir
+    }
+
+    fun getRunsConfigPath(): String {
+        return File(getDataDirectory(), "runs.json").absolutePath
+    }
+
+    fun getRunsDirectory(gameVersion: GameVersion): File {
+        val runsDir = File(getSavesDirectory(), "runs/${gameVersion.name}")
+        if (!runsDir.exists()) runsDir.mkdirs()
+        return runsDir
+    }
+
+    fun getRunFolder(gameVersion: GameVersion, runName: String): File {
+        return File(getRunsDirectory(gameVersion), runName)
+    }
+
+    fun getActiveRomFile(): File? {
+        return getRomsDirectory().listFiles()
+            ?.firstOrNull { it.extension.lowercase() == "gba" }
+    }
+
+    fun getActiveSavFile(): File? {
+        return getRomsDirectory().listFiles()
+            ?.firstOrNull { it.extension.lowercase() == "sav" }
     }
 
     fun getSaveSize(file: File): String{
@@ -111,7 +98,7 @@ object FilePathProvider {
     fun importRom(sourcefile: File): Result<File>{
         return try {
             val destFile = File(getRomsDirectory(),sourcefile.name)
-            sourcefile.copyTo(destFile, overwrite = false)
+            sourcefile.copyTo(destFile, overwrite = true)
             Result.success(destFile)
         }catch (e: Exception){
             Result.failure(e)
@@ -126,5 +113,30 @@ object FilePathProvider {
             Result.failure(e)
         }
     }
+
+    fun getBundledRomPath(gameVersion: GameVersion): File {
+        val os = System.getProperty("os.name").lowercase()
+        val fileName = when (gameVersion) {
+            GameVersion.FIRE_RED -> "firered.gba"
+            GameVersion.LEAF_GREEN -> "leafgreen.gba"
+            GameVersion.EMERALD -> "emerald.gba"
+            GameVersion.RUBY -> "ruby.gba"
+            GameVersion.SAPPHIRE -> "sapphire.gba"
+        }
+        return File("resources/roms", fileName)
+    }
+
+    fun isGameVerified(gameVersion: GameVersion): Boolean {
+        val verifiedFile = File(getDataDirectory(), "verified/${gameVersion.name}.verified")
+        return verifiedFile.exists()
+    }
+
+    fun markGameVerified(gameVersion: GameVersion) {
+        val verifiedDir = File(getDataDirectory(), "verified")
+        verifiedDir.mkdirs()
+        File(verifiedDir, "${gameVersion.name}.verified").createNewFile()
+    }
+
+
 
 }

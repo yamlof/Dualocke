@@ -2,13 +2,14 @@ package org.example.project.ui.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.Button
-import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
-import androidx.compose.material.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,79 +22,133 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import org.example.project.SupabaseClient
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.text.font.FontWeight
+import org.example.project.data.network.SupabaseClient
+
 
 @Composable
 fun RegisterScreen(
     onRegisterSuccess: () -> Unit
-){
-
+) {
     var email by remember { mutableStateOf("") }
-    var password by remember {mutableStateOf("")}
+    var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("Register",style = MaterialTheme.typography.h1)
+    AuthBackground {
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .width(360.dp)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                "DUALOCKE",
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White
+            )
+            Text(
+                "Create Account",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White.copy(alpha = 0.8f)
+            )
 
-        TextField(
-            value = email,
-            onValueChange = {email = it},
-            label = { Text("Email") }
-        )
+            Spacer(modifier = Modifier.height(8.dp))
 
-        TextField(
-            value = username,
-            onValueChange = {username = it},
-            label = {Text("Username")}
-        )
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Username", color = Color.White.copy(alpha = 0.7f)) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color.White,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.5f),
+                    cursorColor = Color.White
+                )
+            )
 
-        TextField(
-            value = password,
-            onValueChange = {password = it},
-            label = {Text("Password")},
-            visualTransformation = PasswordVisualTransformation()
-        )
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text("Email", color = Color.White.copy(alpha = 0.7f)) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color.White,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.5f),
+                    cursorColor = Color.White
+                )
+            )
 
-        TextField(
-            value = confirmPassword,
-            onValueChange = {confirmPassword = it},
-            label = {Text("Confirm Password")},
-            visualTransformation = PasswordVisualTransformation()
-        )
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Password", color = Color.White.copy(alpha = 0.7f)) },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color.White,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.5f),
+                    cursorColor = Color.White
+                )
+            )
 
-        Button(
-            onClick = {
-                if (password != confirmPassword){
-                    error = "Passwords do not match"
-                    return@Button
-                }
+            OutlinedTextField(
+                value = confirmPassword,
+                onValueChange = { confirmPassword = it },
+                label = { Text("Confirm Password", color = Color.White.copy(alpha = 0.7f)) },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color.White,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.5f),
+                    cursorColor = Color.White
+                )
+            )
 
-                scope.launch {
-                    try {
-                        SupabaseClient.register(email,username,password)
-                        onRegisterSuccess()
-                    } catch (e: Exception){
-                        error = e.message ?: "Registration Failed"
-                    }
-                }
+            if (error.isNotEmpty()) {
+                Text(error, color = Color(0xFFFF6B6B),
+                    style = MaterialTheme.typography.bodySmall)
             }
-        ){
-            Text("Register")
-        }
 
-        TextButton(onClick = onRegisterSuccess){
-            Text("Already have an account? Click here")
-        }
+            Button(
+                onClick = {
+                    if (password != confirmPassword) {
+                        error = "Passwords do not match"
+                        return@Button
+                    }
+                    scope.launch {
+                        try {
+                            SupabaseClient.register(email, username, password)
+                            onRegisterSuccess()
+                        } catch (e: Exception) {
+                            error = e.message ?: "Registration Failed"
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(52.dp)
+            ) {
+                Text("Create Account", fontWeight = FontWeight.Bold)
+            }
 
-        if (error.isNotEmpty()) Text(error, color = Color.Red)
+            TextButton(onClick = onRegisterSuccess) {
+                Text("Already have an account? Login", color = Color.White.copy(alpha = 0.7f))
+            }
+        }
     }
 }

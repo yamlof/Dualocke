@@ -65,7 +65,7 @@ fun MatchSection(
             Spacer(modifier = Modifier.height(20.dp))
 
             Button(
-                onClick = onCasualClick,
+                onClick = onRankedClick,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -76,7 +76,7 @@ fun MatchSection(
                 border = BorderStroke(2.dp, MaterialTheme.colorScheme.outline)
             ){
                 Text(
-                    "Casual Mode",
+                    "Ranked Mode",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -84,7 +84,7 @@ fun MatchSection(
             }
             Spacer(modifier = Modifier.height(12.dp))
             Button(
-                onClick = onRankedClick,
+                onClick = onCasualClick,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -101,7 +101,7 @@ fun MatchSection(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "Ranked Mode",
+                        "Casual Mode",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )

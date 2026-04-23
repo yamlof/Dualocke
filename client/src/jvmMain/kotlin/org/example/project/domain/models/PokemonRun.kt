@@ -3,6 +3,14 @@ package org.example.project.domain.models
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class BadgeSnapshot(
+    val badgeNumber: Int,
+    val team: List<PokemonTeamMember>,
+    val deaths: Int,
+    val capturedAt: Long = System.currentTimeMillis()
+)
+
+@Serializable
 data class PokemonRun(
     val id:String,
     val trainerName:String,
@@ -12,10 +20,10 @@ data class PokemonRun(
     val badges: Int = 0,
     val deaths: Int = 0,
     val pokemonTeam : List<PokemonTeamMember> = emptyList(),
+    val badgeSnapshots: List<BadgeSnapshot> = emptyList(),  // add this
     val isActive: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val lastPlayedAt: Long = System.currentTimeMillis(),
-
     val emulatorSavePath:String? = null,
     val emulatorRomPath:String? = null
 )
@@ -25,7 +33,7 @@ data class PokemonTeamMember(
     val name:String,
     val species:String,
     val level:Int,
-    val iconUrl:String,
+    val iconUrl:String = "",
     val isAlive:Boolean = true
 )
 

@@ -1,7 +1,9 @@
 package org.example.project.ui.home
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,6 +41,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -71,6 +75,7 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val allRuns by viewModel.runRepository.allRuns.collectAsState()
+    val emulatorFrame by viewModel.emulatorFrame.collectAsState()
     val scope = rememberCoroutineScope()
 
     var showGameLibrary by remember { mutableStateOf(false) }
@@ -87,6 +92,7 @@ fun HomeScreen(
 
     HomeScreenContent(
         uiState = uiState,
+        emulatorFrame = emulatorFrame,
         onLogout = onLogout,
         onLaunchGame = { viewModel.launchGame() },
         onFindCasualMatch = { viewModel.findCasualMatch() },
@@ -264,6 +270,7 @@ fun rememberPartyViewModel() : PartyViewModel{
 @Composable
 private fun HomeScreenContent(
     uiState: HomeUiState,
+    emulatorFrame: ImageBitmap?,
     onLogout: () -> Unit,
     onLaunchGame :() -> Unit,
     onFindCasualMatch:() -> Unit,
@@ -336,7 +343,7 @@ private fun HomeScreenContent(
 
                 Button(
                     onClick = onLaunchGame,
-                    enabled = uiState.romLoaded && !uiState.isSwitchingRun && uiState.activeGbaRun != null,
+                    enabled = uiState.romLoaded && !uiState.isSwitchingRun && emulatorFrame == null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(64.dp),
@@ -365,7 +372,11 @@ private fun HomeScreenContent(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            if (uiState.romLoaded) "Launch Game" else "No ROM Loaded",
+                            when {
+                                !uiState.romLoaded -> "No ROM Loaded"
+                                emulatorFrame != null -> "Game Running"
+                                else -> "Launch Game"
+                            },
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -411,12 +422,22 @@ private fun HomeScreenContent(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                LivePartyDataSection(
-                    partyLines = uiState.partyLines,
-                    isMgbaRunning = uiState.isConnected,
-                    snapshot = uiState.latestSnapshot,
-                    modifier = Modifier.weight(1f)
-                )
+                if (emulatorFrame != null) {
+                    Image(
+                        painter = BitmapPainter(emulatorFrame),
+                        contentDescription = "Game",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(240f / 160f)
+                    )
+                } else {
+                    LivePartyDataSection(
+                        partyLines = uiState.partyLines,
+                        isMgbaRunning = uiState.isConnected,
+                        snapshot = uiState.latestSnapshot,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
     }

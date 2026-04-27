@@ -35,7 +35,7 @@ import org.example.project.domain.models.GameVersion
 import org.example.project.domain.models.PokemonResponse
 import org.example.project.domain.models.PokemonRun
 import org.example.project.domain.models.PokemonTeamMember
-import org.example.project.launchMGBA
+import org.example.project.emulator.EmulatorSession
 import org.example.project.utils.getRankFromElo
 import java.io.File
 import java.lang.Exception
@@ -45,6 +45,9 @@ class HomeViewModel (
 ): ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    private val emulatorSession = EmulatorSession()
+    val emulatorFrame = emulatorSession.frame
 
     private val tcpClient = LuaTcpClient()
     private var connectionJob: Job? = null
@@ -329,7 +332,13 @@ class HomeViewModel (
     }
 
     fun launchGame() {
-        launchMGBA()
+        val rom = FilePathProvider.getActiveRomFile() ?: run {
+            _uiState.update { it.copy(gbaError = "No ROM found. Import a ROM first.") }
+            return
+        }
+        if (!emulatorSession.start(rom.absolutePath)) {
+            _uiState.update { it.copy(gbaError = "Failed to start emulator") }
+        }
     }
 
     private fun startGbaWatcher() {
@@ -773,6 +782,7 @@ class HomeViewModel (
 
     override fun onCleared() {
         super.onCleared()
+        emulatorSession.dispose()
         pokeApiClient.close()
         showdownClient.disconnect()
         tcpClient.disconnect()

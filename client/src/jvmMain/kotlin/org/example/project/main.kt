@@ -1,20 +1,17 @@
 package org.example.project
 
-import androidx.compose.material.MaterialTheme
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import org.example.project.ui.auth.LoginScreen
 import org.example.project.ui.auth.RegisterScreen
 import org.example.project.ui.auth.TitleScreen
 import org.example.project.ui.home.HomeScreen
-import org.example.project.data.network.SupabaseClient
 
 @Serializable
 object LoginScreenDestination
@@ -125,53 +122,39 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         title = "Dualocke",
     ) {
+        val navController = rememberNavController()
         MaterialTheme {
-            val navController = rememberNavController()
-            val scope = rememberCoroutineScope()
-            val startDestination = TitleScreenDestination
-
-            NavHost(navController = navController, startDestination = startDestination) {
+            NavHost(navController = navController, startDestination = TitleScreenDestination) {
                 composable<TitleScreenDestination> {
                     TitleScreen(
-                        onLoginClick = {
-                            navController.navigate(LoginScreenDestination)
-                        },
-                        onRegisterClick = {
-                            navController.navigate(RegisterScreenDestination)
-                        },
+                        onLoginClick = { navController.navigate(LoginScreenDestination) },
+                        onRegisterClick = { navController.navigate(RegisterScreenDestination) }
                     )
                 }
                 composable<LoginScreenDestination> {
                     LoginScreen(
                         onLoginSuccess = {
                             navController.navigate(HomeScreenDestination) {
-                                popUpTo(TitleScreenDestination) { inclusive = true }
+                                popUpTo<TitleScreenDestination> { inclusive = true }
                             }
                         },
-                        onRegisterClick = {
-                            navController.navigate(RegisterScreenDestination)
-                        }
+                        onRegisterClick = { navController.navigate(RegisterScreenDestination) }
                     )
                 }
-
                 composable<RegisterScreenDestination> {
                     RegisterScreen(
                         onRegisterSuccess = {
                             navController.navigate(HomeScreenDestination) {
-                                popUpTo(TitleScreenDestination) { inclusive = true }
+                                popUpTo<TitleScreenDestination> { inclusive = true }
                             }
                         }
                     )
                 }
-
                 composable<HomeScreenDestination> {
                     HomeScreen(
                         onLogout = {
-                            scope.launch {
-                                SupabaseClient.logout()
-                                navController.navigate(TitleScreenDestination) {
-                                    popUpTo(HomeScreenDestination) { inclusive = true }
-                                }
+                            navController.navigate(TitleScreenDestination) {
+                                popUpTo<HomeScreenDestination> { inclusive = true }
                             }
                         }
                     )

@@ -115,11 +115,13 @@ fun HomeScreen(
     if (uiState.showMatchDialog && uiState.currentMatch != null) {
         MatchDialog(
             match = uiState.currentMatch!!,
+            showdownUsername = uiState.showdownUsername,
+            onUsernameChange = viewModel::updateShowdownUsername,
             showdownUrl = uiState.showdownUrl,
             onStartBattle = { viewModel.startShowdownMatch(uiState.currentMatch!!) },
-            onWin = { viewModel.reportWin() },
-            onLoss = { viewModel.reportLoss() },
-            onDismiss = { }
+            onWin = viewModel::reportWin,
+            onLoss = viewModel::reportLoss,
+            onDismiss = viewModel::dismissMatchResult
         )
     }
 

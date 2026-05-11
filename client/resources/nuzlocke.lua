@@ -725,11 +725,6 @@ local function updateEncounterTracking(party, mapId)
 
         console:log(string.format("[POKEDEX] hasPokedex: %s", tostring(hasPokedex())))
 
-
-        if not hasPokedex() then
-                prevInBattle = inBattle
-                return
-        end
         -- Save party snapshot at battle start
         partyAtBattleStart = {}
         for _, mon in ipairs(party) do
@@ -737,14 +732,20 @@ local function updateEncounterTracking(party, mapId)
         end
 
         console:log(string.format("[ENCOUNTER] Battle started on map %d (%s)!",
-            lastOverworldMap, getMapName(lastOverworldMap)))
-        battleStartMap = lastOverworldMap
+                lastOverworldMap, getMapName(lastOverworldMap)))
+            battleStartMap = lastOverworldMap
 
         local battleType = emu:read16(0x020386AC)
-        console:log(string.format("[ENCOUNTER] Battle type: %d", battleType))
-
         if battleType ~= 0 then
-            console:log("[ENCOUNTER] Trainer battle, skipping encounter tracking")
+            console:log("[ENCOUNTER] Trainer battle, skipping")
+            prevInBattle = inBattle
+            return
+        end
+
+        -- Gate encounter recording on Pokedex possession
+        if not hasPokedex() then
+            console:log("[ENCOUNTER] No Pokedex yet — not recording encounter")
+            battleStartMap = nil  -- don't try to update status when battle ends either
             prevInBattle = inBattle
             return
         end
@@ -755,8 +756,6 @@ local function updateEncounterTracking(party, mapId)
             if enemyMon and enemyMon.species and enemyMon.species > 0 and enemyMon.species < 252 then
                 enemySpecies = game:getSpeciesName(enemyMon.species)
             end
-            console:log(string.format("[SPECIES] species=%d name=%s",
-                enemyMon and enemyMon.species or -1, enemySpecies))
             battleEnemy = enemySpecies
             nuzlocke.encounterStatus[lastOverworldMap] = {
                 status = ENCOUNTER_STATUS.IN_BATTLE,
@@ -766,6 +765,7 @@ local function updateEncounterTracking(party, mapId)
             console:log(string.format("[NUZLOCKE] New encounter on map %d: %s",
                 lastOverworldMap, enemySpecies))
         end
+
     end
 
     if not inBattle and prevInBattle then
@@ -914,15 +914,9 @@ local function hasPokeballs()
 end
 
 function hasPokedex()
-    -- Flag 0x820 = got starter, flag 0x2B0 = got pokedex
-    local saveblock1 = emu:read32(0x03005008)
-        -- Ball pocket item count at saveblock1 + 0x0430
-    local ballPocketCount = emu:read16(saveblock1 + 0x0430)
-    console:log(string.format("[POKEBALL] Ball count: %d", ballPocketCount))
-    return ballPocketCount > 0
-
-
+    return FlagGet(0x829)  -- "Got Pokedex" flag in FireRed
 end
+
 
 function updateBuffer()
 	if not game or not partyBuffer then return end

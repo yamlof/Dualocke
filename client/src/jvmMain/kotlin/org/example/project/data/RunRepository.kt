@@ -13,35 +13,41 @@ import org.example.project.domain.models.PokemonTeamMember
 import java.io.File
 import java.util.UUID
 
-class RunRepository (
-    private val runsConfigPath: String = FilePathProvider.getRunsConfigPath()
-){
+object RunRepository {
     private val _currentRun = MutableStateFlow<PokemonRun?>(null)
-    val currentRun : StateFlow<PokemonRun?> = _currentRun.asStateFlow()
+    val currentRun: StateFlow<PokemonRun?> = _currentRun.asStateFlow()
     private val _allRuns = MutableStateFlow<List<PokemonRun>>(emptyList())
-    val allRuns : StateFlow<List<PokemonRun>> = _allRuns.asStateFlow()
+    val allRuns: StateFlow<List<PokemonRun>> = _allRuns.asStateFlow()
 
     private val json = Json {
         prettyPrint = true
         ignoreUnknownKeys = true
     }
 
-    init {
+    fun initialize() {
         loadRuns()
     }
 
-    private fun loadRuns(){
+    private fun loadRuns() {
         try {
-            val configFile = File(runsConfigPath)
-            if (configFile.exists()){
+            val path = FilePathProvider.getRunsConfigPath()  // ⬅️ resolved fresh
+            val configFile = File(path)
+            println("📂 Loading runs from: $path")
+            if (configFile.exists()) {
                 val jsonString = configFile.readText()
                 val runs = json.decodeFromString<List<PokemonRun>>(jsonString)
                 _allRuns.value = runs
-                _currentRun.value = runs.firstOrNull {it.isActive}
+                _currentRun.value = runs.firstOrNull { it.isActive }
+                println("📂 Loaded ${runs.size} runs")
+            } else {
+                _allRuns.value = emptyList()
+                _currentRun.value = null
+                println("📂 No runs file yet for this user")
             }
         } catch (e: Exception) {
             println("Error loading runs: ${e.message}")
             _allRuns.value = emptyList()
+            _currentRun.value = null
         }
     }
 
@@ -265,6 +271,8 @@ class RunRepository (
         saveRuns()
     }
 
+
+
     fun updateRunStats(
         runId: String,
         badges: Int?,
@@ -333,28 +341,8 @@ class RunRepository (
     }
 
     fun reloadForUser() {
-        val newPath = FilePathProvider.getRunsConfigPath()
-        println("🔄 reloadForUser path: $newPath")
-        println("🔄 File exists: ${File(newPath).exists()}")
-        println("🔄 File content: ${File(newPath).readText()}")
-        val configFile = File(newPath)
-        if (configFile.exists()) {
-            try {
-                val jsonString = configFile.readText()
-                val runs = json.decodeFromString<List<PokemonRun>>(jsonString)
-                _allRuns.value = runs
-                _currentRun.value = runs.firstOrNull { it.isActive }
-                println("🔄 Loaded ${runs.size} runs, active: ${_currentRun.value?.id}")
-            } catch (e: Exception) {
-                println("Error reloading runs: ${e.message}")
-                _allRuns.value = emptyList()
-                _currentRun.value = null
-            }
-        } else {
-            println("🔄 No runs file found at $newPath")
-            _allRuns.value = emptyList()
-            _currentRun.value = null
-        }
+        println("🔄 reloadForUser called")
+        loadRuns()  // ⬅️ just reuse the logic, don't duplicate it
     }
 
 }

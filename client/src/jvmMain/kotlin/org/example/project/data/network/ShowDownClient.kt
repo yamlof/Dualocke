@@ -8,9 +8,19 @@ import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.example.project.domain.models.PokemonTeamMember
 
 
@@ -21,132 +31,37 @@ class ShowdownClient(
         install(WebSockets)
     }
 
-    private var playerSession: DefaultClientWebSocketSession? = null
     private var botSession: DefaultClientWebSocketSession? = null
     private var currentRoom: String? = null
-    @Volatile private var botReady = false
-    private var storedPlayerTeam: List<PokemonTeamMember> = emptyList()
-    private var storedBotTeam: List<PokemonTeamMember> = emptyList()
+    private var matchJob: Job? = null
+    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     suspend fun startMatch(
         playerUsername: String,
         botUsername: String,
-        playerTeam: List<PokemonTeamMember>,
+        playerTeam: List<PokemonTeamMember>,  // kept for API compat; not used (player builds their own team)
         botTeam: List<PokemonTeamMember>,
         onMatchStarted: (roomId: String) -> Unit,
         onWin: (winner: String) -> Unit,
         onError: (String) -> Unit
     ) {
-        botReady = false
-        storedPlayerTeam = playerTeam
-        storedBotTeam = botTeam
-        coroutineScope {
-            // Connect player
-            launch {
-                try {
-                    client.webSocket(serverUrl) {
-                        playerSession = this
-                        println("[SHOWDOWN] Player connected")
-                        handlePlayerSession(
-                            playerUsername,
-                            botUsername,
-                            onMatchStarted,
-                            onWin
-                        )
-                    }
-                } catch (e: Exception) {
-                    println("[SHOWDOWN] Player error: ${e.message}")
-                    onError(e.message ?: "Connection failed")
+        matchJob?.cancel()
+        matchJob = coroutineScope.launch {
+            try {
+                client.webSocket(serverUrl) {
+                    botSession = this
+                    println("[SHOWDOWN] Bot connected")
+                    handleBotSession(
+                        botUsername = botUsername,
+                        playerUsername = playerUsername,
+                        botTeam = botTeam,
+                        onMatchStarted = onMatchStarted,
+                        onWin = onWin
+                    )
                 }
-            }
-
-            // Connect bot
-            launch {
-                delay(2000) // wait for player to connect first
-                try {
-                    client.webSocket(serverUrl) {
-                        botSession = this
-                        println("[SHOWDOWN] Bot connected")
-                        handleBotSession(botUsername, playerUsername)
-                    }
-                } catch (e: Exception) {
-                    println("[SHOWDOWN] Bot error: ${e.message}")
-                }
-            }
-        }
-    }
-
-    private suspend fun DefaultClientWebSocketSession.handlePlayerSession(
-        playerUsername: String,
-        botUsername: String,
-        onMatchStarted: (String) -> Unit,
-        onWin: (String) -> Unit
-    ) {
-        var loggedIn = false
-        var inRoom = false
-
-        for (frame in incoming) {
-            if (frame !is Frame.Text) continue
-            val message = frame.readText()
-            println("[SHOWDOWN PLAYER] $message")
-
-            val lines = message.split("\n")
-            val roomId = if (message.startsWith(">")) {
-                message.lines().first().removePrefix(">").trim()
-            } else ""
-
-            for (line in lines) {
-                when {
-                    line.startsWith("|challstr|") -> {
-                        val challstr = line.substringAfter("|challstr|")
-                        // Login without password (--no-security mode)
-                        send("|/trn $playerUsername,0,")
-                        println("[SHOWDOWN] Player logging in as $playerUsername")
-                    }
-
-
-                    line.startsWith("|updateuser|") &&
-                            line.lowercase().contains("| ${playerUsername.lowercase()}|1|") && !loggedIn -> {
-                        loggedIn = true
-                        println("[SHOWDOWN] Player logged in as $playerUsername")
-                        delay(500)
-                        // Wait for bot to be ready
-                        var waited = 0
-                        while (!botReady && waited < 10000) {
-                            delay(500)
-                            waited += 500
-                        }
-                        println("[SHOWDOWN] Bot ready, sending challenge")
-                        val export = generateShowdownExport(storedPlayerTeam)
-                        println("[SHOWDOWN] Team export: $export")
-                        send("|/utm $export")
-                        delay(500)
-                        send("|/challenge $botUsername, gen9customgame")
-                        println("[SHOWDOWN] Challenge sent to $botUsername")
-                    }
-
-
-
-
-                    line.startsWith("|win|") -> {
-                        val winner = line.substringAfter("|win|").trim()
-                        println("[SHOWDOWN] Winner: $winner")
-                        onWin(winner)
-                    }
-
-                    line.startsWith("|init|battle") && !inRoom -> {
-                        inRoom = true
-                        currentRoom = roomId
-                        onMatchStarted(roomId)
-                        println("[SHOWDOWN] Battle room: $roomId")
-                    }
-
-                    line.startsWith("|request|") && line.contains("teamPreview") && roomId.isNotEmpty() -> {
-                        delay(500)
-                        send("$roomId|/team 123")
-                        println("[SHOWDOWN] Player sent team order")
-                    }
-                }
+            } catch (e: Exception) {
+                println("[SHOWDOWN] Bot error: ${e.message}")
+                onError(e.message ?: "Connection failed")
             }
         }
     }
@@ -154,61 +69,148 @@ class ShowdownClient(
     private suspend fun DefaultClientWebSocketSession.handleBotSession(
         botUsername: String,
         playerUsername: String,
+        botTeam: List<PokemonTeamMember>,
+        onMatchStarted: (String) -> Unit,
+        onWin: (String) -> Unit,
     ) {
         var loggedIn = false
+        var challengeSent = false
+        var winReported = false
 
         for (frame in incoming) {
             if (frame !is Frame.Text) continue
             val message = frame.readText()
             println("[SHOWDOWN BOT] $message")
 
+            // Showdown messages may have a room prefix line: ">battle-xyz\n|init|battle\n..."
             val lines = message.split("\n")
             val roomId = if (message.startsWith(">")) {
-                message.lines().first().removePrefix(">").trim()
+                lines.first().removePrefix(">").trim()
             } else ""
-
 
             for (line in lines) {
                 when {
                     line.startsWith("|challstr|") -> {
+                        // --no-security mode: log in by name only
                         send("|/trn $botUsername,0,")
                         println("[SHOWDOWN] Bot logging in as $botUsername")
                     }
 
                     line.startsWith("|updateuser|") &&
-                            line.lowercase().contains("| ${botUsername.lowercase()}|1|") && !loggedIn -> {
+                            line.lowercase().contains("| ${botUsername.lowercase()}|1|") &&
+                            !loggedIn -> {
                         loggedIn = true
                         println("[SHOWDOWN] Bot logged in as $botUsername")
+
                         delay(500)
-                        send("|/utm ${generateShowdownExport(storedBotTeam)}")
+                        send("|/utm ${generateShowdownExport(botTeam)}")
                         delay(500)
-                        botReady = true
-                        println("[SHOWDOWN] Bot ready")
+
+                        // Challenge the player. They must already be logged in on Showdown.
+                        send("|/challenge $playerUsername, gen9customgame")
+                        challengeSent = true
+                        println("[SHOWDOWN] Bot challenged $playerUsername")
                     }
 
-                    // Accept incoming challenge from player
-                    line.startsWith("|pm|") -> {
-                        println("[SHOWDOWN BOT PM] $line")
-                        if (line.contains("wants to battle") || line.contains("/challenge")) {
-                            delay(500)
-                            send("|/accept $playerUsername")
-                            println("[SHOWDOWN] Bot accepted challenge")
-                        }
+                    line.startsWith("|init|battle") && currentRoom == null -> {
+                        currentRoom = roomId
+                        onMatchStarted(roomId)
+                        println("[SHOWDOWN] Battle room: $roomId")
                     }
 
-                    // Bot forfeits on first request (teamPreview or active)
                     line.startsWith("|request|") && roomId.isNotEmpty() -> {
-                        delay(500)
-                        val request = line.substringAfter("|request|")
-                        if (request.contains("teamPreview")) {
-                            send("$roomId|/team 123")
+                        val requestJson = line.substringAfter("|request|")
+                        if (requestJson.isNotBlank()) {
                             delay(500)
+                            chooseAction(roomId, requestJson)
                         }
-                        send("$roomId|/forfeit")
-                        println("[SHOWDOWN] Bot forfeited")
+                    }
+
+                    line.startsWith("|win|") -> {
+                        val winner = line.substringAfter("|win|").trim()
+                        if (!winReported) {
+                            winReported = true
+                            println("[SHOWDOWN] Winner: $winner")
+                            onWin(winner)
+                        }
+                    }
+
+                    // Player rejected or didn't accept the challenge in time
+                    line.startsWith("|popup|") && challengeSent -> {
+                        val popup = line.substringAfter("|popup|")
+                        println("[SHOWDOWN] Server popup: $popup")
                     }
                 }
             }
+        }
+    }
+
+    private suspend fun DefaultClientWebSocketSession.chooseAction(
+        roomId: String,
+        requestJson: String,
+    ) {
+        try {
+            val request = Json.parseToJsonElement(requestJson).jsonObject
+
+            // Team preview
+            if (request["teamPreview"]?.jsonPrimitive?.booleanOrNull == true) {
+                send("$roomId|/team 123456")
+                println("[SHOWDOWN] Bot sent team order")
+                return
+            }
+
+            // Force switch (current pokemon fainted)
+            val forceSwitch = request["forceSwitch"]?.jsonArray
+            if (forceSwitch != null && forceSwitch.firstOrNull()?.jsonPrimitive?.booleanOrNull == true) {
+                val side = request["side"]?.jsonObject
+                val pokemon = side?.get("pokemon")?.jsonArray
+                val switchIndex = pokemon?.withIndex()?.firstOrNull { (_, p) ->
+                    val obj = p.jsonObject
+                    val active = obj["active"]?.jsonPrimitive?.booleanOrNull ?: false
+                    val condition = obj["condition"]?.jsonPrimitive?.content ?: ""
+                    !active && !condition.contains("fnt")
+                }?.index
+
+                if (switchIndex != null) {
+                    send("$roomId|/choose switch ${switchIndex + 1}")
+                    println("[SHOWDOWN] Bot switched to slot ${switchIndex + 1}")
+                } else {
+                    send("$roomId|/choose default")
+                }
+                return
+            }
+
+            // Wait turn (e.g., opponent is force-switching)
+            if (request["wait"]?.jsonPrimitive?.booleanOrNull == true) {
+                println("[SHOWDOWN] Bot waiting (no action required)")
+                return
+            }
+
+            // Normal turn — pick first available move
+            val active = request["active"]?.jsonArray?.firstOrNull()?.jsonObject
+            val moves = active?.get("moves")?.jsonArray
+
+            if (moves != null && moves.isNotEmpty()) {
+                val moveIndex = moves.withIndex().firstOrNull { (_, m) ->
+                    val obj = m.jsonObject
+                    val disabled = obj["disabled"]?.jsonPrimitive?.booleanOrNull ?: false
+                    val pp = obj["pp"]?.jsonPrimitive?.intOrNull ?: 1
+                    !disabled && pp > 0
+                }?.index
+
+                if (moveIndex != null) {
+                    send("$roomId|/choose move ${moveIndex + 1}")
+                    println("[SHOWDOWN] Bot used move ${moveIndex + 1}")
+                } else {
+                    send("$roomId|/choose default")
+                    println("[SHOWDOWN] Bot fell back to default (no usable moves)")
+                }
+            } else {
+                send("$roomId|/choose default")
+            }
+        } catch (e: Exception) {
+            println("[SHOWDOWN] Error parsing request: ${e.message}, falling back to default")
+            send("$roomId|/choose default")
         }
     }
 
@@ -221,6 +223,14 @@ class ShowdownClient(
     }
 
     fun disconnect() {
-        client.close()
+        matchJob?.cancel()
+        matchJob = null
+        botSession = null
+        currentRoom = null
+        try {
+            client.close()
+        } catch (e: Exception) {
+            println("[SHOWDOWN] Error closing client: ${e.message}")
+        }
     }
 }

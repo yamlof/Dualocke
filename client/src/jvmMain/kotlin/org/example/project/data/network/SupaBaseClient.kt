@@ -6,10 +6,13 @@ import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.serializer.KotlinXSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.put
 import org.example.project.LeaderboardEntry
 import org.example.project.Match
 import org.example.project.MatchInsert
@@ -18,6 +21,8 @@ import org.example.project.MatchQueueInsert
 import org.example.project.PlayerRating
 import org.example.project.PlayerRatingInsert
 import org.example.project.Profile
+import org.example.project.data.RunRepository
+import org.example.project.data.UserSession
 import org.example.project.domain.models.PokemonTeamMember
 
 object SupabaseClient {
@@ -35,8 +40,24 @@ object SupabaseClient {
         })
     }
 
-    suspend fun register (email:String, username : String,password:String, ) {
-        val result = client.auth.signUpWith(Email){
+    suspend fun initializeSession() {
+        // Supabase auth restores asynchronously; wait for it
+        client.auth.awaitInitialization()
+
+        val userId = client.auth.currentUserOrNull()?.id
+        if (userId != null) {
+            UserSession.setUser(userId)
+            println("✅ Restored session for user: $userId")
+        } else {
+            println("ℹ️ No restored session — running as guest")
+        }
+        RunRepository.initialize()  // load whatever user is now active
+
+    }
+
+
+    suspend fun register(email: String, username: String, password: String) {
+        val result = client.auth.signUpWith(Email) {
             this.email = email
             this.password = password
         }
@@ -51,17 +72,33 @@ object SupabaseClient {
                     username = username
                 )
             )
+
+        // ⬇️ Set the session AFTER profile is created
+        UserSession.setUser(userId)
+        RunRepository.reloadForUser()
     }
 
-    suspend fun login (email: String, password: String ){
-        client.auth.signInWith(Email){
+
+    suspend fun login(email: String, password: String) {
+        client.auth.signInWith(Email) {
             this.email = email
             this.password = password
         }
+
+        // ⬇️ Set the session immediately after login succeeds
+        val userId = client.auth.currentUserOrNull()?.id
+            ?: error("Login succeeded but no user ID")
+        UserSession.setUser(userId)
+        RunRepository.reloadForUser()
     }
+
 
     suspend fun logout() {
         client.auth.signOut()
+
+        // ⬇️ Clear session AFTER signOut
+        UserSession.clear()
+        RunRepository.reloadForUser()  // reloads as "guest"
     }
 
     suspend fun getUsername(): Profile? {
@@ -287,14 +324,20 @@ object SupabaseClient {
         }
     }
 
-    suspend fun applyEloPenalty(userId: String, newElo: Int) {
-        try {
-            client.from("player_ratings")
-                .update({ set("elo", maxOf(newElo, 0)) }) {
-                    filter { eq("player_id", userId) }
+
+    suspend fun applyEloDelta(userId: String, delta: Int): Int? {
+        return try {
+            val response = client.postgrest.rpc(
+                function = "apply_elo_delta",
+                parameters = buildJsonObject {
+                    put("p_user_id", userId)
+                    put("p_delta", delta)
                 }
+            )
+            response.data.toIntOrNull()
         } catch (e: Exception) {
-            println("❌ Elo penalty error: ${e.message}")
+            println("❌ Elo delta error: ${e.message}")
+            null
         }
     }
 

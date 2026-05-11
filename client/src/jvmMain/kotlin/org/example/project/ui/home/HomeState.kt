@@ -43,5 +43,8 @@ data class HomeUiState(
     val playerWon: Boolean? = null,
     val elo: Int = 1000,
     val leaderboard: List<LeaderboardEntry> = emptyList(),
-    val showLeaderboard: Boolean = false
+    val showLeaderboard: Boolean = false,
+    val showdownUsername: String = "",
+
     )
+

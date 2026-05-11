@@ -17,6 +17,7 @@ import io.ktor.client.request.get
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -28,6 +29,7 @@ import org.example.project.data.GbaFileWatcher
 import org.example.project.data.GbaRunManager
 import org.example.project.data.GbaValidator
 import org.example.project.data.RunRepository
+import org.example.project.data.UserSession
 import org.example.project.data.network.NuzlockeSnapshot
 import org.example.project.data.network.ShowdownClient
 import org.example.project.data.network.SupabaseClient
@@ -36,13 +38,14 @@ import org.example.project.domain.models.PokemonResponse
 import org.example.project.domain.models.PokemonRun
 import org.example.project.domain.models.PokemonTeamMember
 import org.example.project.launchMGBA
+import org.example.project.ui.home.components.BrowserLauncher
 import org.example.project.utils.getRankFromElo
 import java.io.File
 import java.lang.Exception
 
-class HomeViewModel (
-    val runRepository: RunRepository = RunRepository()
-): ViewModel() {
+class HomeViewModel : ViewModel() {
+
+    val runRepository = RunRepository
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
@@ -62,6 +65,8 @@ class HomeViewModel (
     private val DECAY_INTERVAL_MS = 60_000L
     private val DECAY_AMOUNT = 2
     private val processedDeaths = mutableSetOf<String>()
+
+    private var baselineDeathCount: Int? = null
 
 
     private val pokeApiClient = HttpClient(CIO){
@@ -84,51 +89,120 @@ class HomeViewModel (
         checkExistingRom()
         loadVerifiedGames()
         loadPlayerRating()
+        observeUserChanges()
+    }
+
+    private fun observeUserChanges() {
+        viewModelScope.launch {
+            UserSession.currentUserId.drop(1).collect { userId ->
+                // drop(1) skips the initial value so we only react to actual changes
+                println("👤 User changed to: $userId — resetting state")
+
+                // Stop everything tied to the old user
+                stopTcpConnection()
+                gbaWatcher?.stop()
+                gbaWatcher = null
+                activeRunFolder = null
+                clearDeathTracking()
+
+                // Clear UI state
+                _uiState.update { it.copy(
+                    currentRunId = null,
+                    activeGbaRun = null,
+                    activeGame = null,
+                    trainerName = "No run selected",
+                    username = null,
+                    badges = "0/8",
+                    deaths = "0",
+                    pokemonTeamIcons = emptyList(),
+                    partyLines = emptyList()
+                ) }
+
+                // Reload everything for the new user
+                runRepository.reloadForUser()
+                loadUserProfile()
+                loadPlayerRating()
+                checkExistingRom()
+                loadVerifiedGames()
+            }
+        }
     }
 
     private fun loadUserProfile(){
         viewModelScope.launch {
             try {
                 val profile = SupabaseClient.getUsername()
-                _uiState.update { it.copy(
-                    username = profile?.username,
-                    isLoading = false
-                ) }
-            }catch (e: Exception){
-                _uiState.update { it.copy(
-                    username = null,
-                    isLoading = false
-                ) }
+                if (profile != null) {
+                    _uiState.update { it.copy(
+                        username = profile.username,
+                        isLoading = false
+                    ) }
+                } else {
+                    // No profile returned — could be no session, or row missing
+                    // Don't wipe existing username; just stop loading
+                    _uiState.update { it.copy(isLoading = false) }
+                }
+            } catch (e: Exception) {
+                println("⚠️ Failed to load profile: ${e.message}")
+                // Network/server error — keep whatever username we had
+                _uiState.update { it.copy(isLoading = false) }
             }
         }
     }
 
-    private fun observeCurrentRun(){
+    fun updateShowdownUsername(name: String) {
+        _uiState.update { it.copy(showdownUsername = name) }
+    }
+
+    private fun observeCurrentRun() {
         viewModelScope.launch {
-                runRepository.currentRun.collect{run ->
-                    if (run != null) {
-                        val activeSav = FilePathProvider.getActiveSavFile()
-                        if (activeSav != null && activeSav.exists()) {
-                            loadRunData(run.id)
-                        } else {
-                            _uiState.update { it.copy(
-                                trainerName = "New Run ",
-                                badges = "0/8",
-                                deaths = "0",
-                                pokemonTeamIcons = emptyList()
-                            ) }
-                        }
+            var lastRunId : String? = null
+            runRepository.currentRun.collect { run ->
+
+                if (run?.id != lastRunId){
+                    clearDeathTracking()
+                    lastRunId = run?.id
+                }
+
+                // Update activeRunFolder to match the current run
+                activeRunFolder = run?.let { findRunFolderForRun(it) }
+                println("📁 activeRunFolder is now: ${activeRunFolder?.absolutePath}")
+
+                if (run != null) {
+                    val activeSav = FilePathProvider.getActiveSavFile()
+                    if (activeSav != null && activeSav.exists()) {
+                        loadRunData(run.id)
                     } else {
                         _uiState.update { it.copy(
-                            trainerName = "No run selected",
-                            pokemonTeamIcons = emptyList(),
+                            trainerName = "New Run",
                             badges = "0/8",
-                            deaths = "0"
+                            deaths = "0",
+                            pokemonTeamIcons = emptyList()
                         ) }
                     }
+                } else {
+                    _uiState.update { it.copy(
+                        trainerName = "No run selected",
+                        pokemonTeamIcons = emptyList(),
+                        badges = "0/8",
+                        deaths = "0"
+                    ) }
                 }
+            }
         }
     }
+
+    private fun findRunFolderForRun(run: PokemonRun): File? {
+        // Search the user-specific runs directory for the folder matching this run ID
+        val runsDir = FilePathProvider.getRunsDirectory(run.gameVersion)
+        if (!runsDir.exists()) return null
+
+        return runsDir.listFiles()?.firstOrNull { folder ->
+            val runIdFile = File(folder, "runid.txt")
+            runIdFile.exists() && runIdFile.readText().trim() == run.id
+        }
+    }
+
 
     private fun loadRunData(runId : String){
         viewModelScope.launch {
@@ -209,8 +283,18 @@ class HomeViewModel (
 
     private fun handleSnapshot(snapshot: NuzlockeSnapshot) {
 
-        val previousBadges = uiState.value.badges
-            .substringBefore("/").toIntOrNull() ?: 0
+
+        if (baselineDeathCount == null) {
+            baselineDeathCount = snapshot.deaths.size
+            snapshot.deaths.forEach { death ->
+                val key = "${death.nickname}_${death.species}_${death.level}"
+                processedDeaths.add(key)
+            }
+            println("📍 Baseline: ${snapshot.deaths.size} existing deaths recorded")
+        }
+
+        val previousBadges = uiState.value.badges.substringBefore("/").toIntOrNull() ?: 0
+        val previousDeaths = uiState.value.deaths.toIntOrNull() ?: 0
 
         _uiState.update { state ->
             state.copy(
@@ -226,30 +310,36 @@ class HomeViewModel (
             println("🗺️ Map $mapId: ${enc.species} - ${enc.status}")
         }
 
-        val previousDeaths = uiState.value.deaths.toIntOrNull() ?: 0
         val currentDeaths = snapshot.deaths.size
 
+
         if (currentDeaths > previousDeaths) {
-            val newDeathsList = snapshot.deaths.filter { death ->
+            val newDeaths = snapshot.deaths.filter { death ->
                 val key = "${death.nickname}_${death.species}_${death.level}"
-                processedDeaths.add(key) // returns false if already exists
+                key !in processedDeaths
             }
 
-            if (newDeathsList.isNotEmpty()) {
-                val isFirstDeath = previousDeaths == 0
+            if (newDeaths.isNotEmpty()) {
+                // Was this run "fresh" (no deaths processed yet) before this batch?
+                val wasFirstEverDeath = processedDeaths.isEmpty()
+
+                // Mark them processed
+                newDeaths.forEach { death ->
+                    val key = "${death.nickname}_${death.species}_${death.level}"
+                    processedDeaths.add(key)
+                }
+
                 val starterSpecies = listOf("bulbasaur", "charmander", "squirtle", "pikachu")
-                val dyingPokemon = snapshot.deaths.lastOrNull()
+                val dyingPokemon = newDeaths.lastOrNull()
                 val isStarter = dyingPokemon?.species?.lowercase()?.trim() in starterSpecies
 
-                if (isFirstDeath && isStarter) {
+                if (wasFirstEverDeath && isStarter) {
                     println("Starter fainted on first death — penalty ignored")
                 } else {
                     viewModelScope.launch {
-                        val userId = SupabaseClient.client.auth.currentUserOrNull()?.id ?: return@launch
-                        val rating = SupabaseClient.getPlayerRating(userId)
-                        val penalty = newDeathsList.size * 10
-                        val newElo = maxOf((rating?.elo ?: 1000) - penalty, 0)
-                        SupabaseClient.applyEloPenalty(userId, newElo)
+                        val userId = UserSession.currentUserId.value ?: return@launch
+                        val penalty = newDeaths.size * 10
+                        val newElo = SupabaseClient.applyEloDelta(userId, -penalty)
                         loadPlayerRating()
                         println("Death penalty: -$penalty Elo, new Elo: $newElo")
                         _uiState.update { it.copy(gbaError = "Pokemon fainted! -${penalty} Elo") }
@@ -257,7 +347,6 @@ class HomeViewModel (
                 }
             }
         }
-
 
         val currentTime = System.currentTimeMillis()
         snapshot.deaths.forEach { death ->
@@ -268,11 +357,9 @@ class HomeViewModel (
             if (minutesElapsed > 0 && snapshot.party.any { it.nickname == death.nickname }) {
                 deathTimestamps[key] = currentTime
                 viewModelScope.launch {
-                    val userId = SupabaseClient.client.auth.currentUserOrNull()?.id ?: return@launch
-                    val rating = SupabaseClient.getPlayerRating(userId)
+                    val userId = UserSession.currentUserId.value ?: return@launch
                     val penalty = (minutesElapsed * DECAY_AMOUNT).toInt()
-                    val newElo = maxOf((rating?.elo ?: 1000) - penalty, 0)
-                    SupabaseClient.applyEloPenalty(userId, newElo)
+                    SupabaseClient.applyEloDelta(userId, -penalty)
                     loadPlayerRating()
                     println("Decay penalty: -$penalty Elo for keeping fainted pokemon in party")
                 }
@@ -349,7 +436,6 @@ class HomeViewModel (
         val rom = FilePathProvider.getActiveRomFile()
         if (rom != null) {
             println("🎮 ROM ready: ${rom.name}")
-            activeRunFolder = null
 
             var foundFolder: File? = null
             var foundGame: GameVersion? = null
@@ -364,7 +450,6 @@ class HomeViewModel (
             }
 
             if (foundFolder != null && foundGame != null) {
-                activeRunFolder = foundFolder
                 val runIdFile = File(foundFolder, "runid.txt")
                 println("🔍 Auto-selected: ${foundGame.name}/${foundFolder.name}")
                 if (runIdFile.exists()) {
@@ -405,7 +490,6 @@ class HomeViewModel (
 
             GbaRunManager.switchRun(activeRunFolder, target)
                 .onSuccess {
-                    activeRunFolder = target
                     _uiState.update { it.copy(
                         romLoaded = true,
                         activeGame = gameVersion,
@@ -478,7 +562,6 @@ class HomeViewModel (
 
                             FilePathProvider.getActiveSavFile()?.delete()
 
-                            activeRunFolder = folder
                             File(folder, "runid.txt").writeText(runId)
 
                             loadVerifiedGames()
@@ -502,20 +585,18 @@ class HomeViewModel (
 
     fun deleteGbaRun(gameVersion: GameVersion, runName: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val userId = SupabaseClient.client.auth.currentUserOrNull()?.id
+            val userId = UserSession.currentUserId.value ?: return@launch
             if (userId != null) {
-                val rating = SupabaseClient.getPlayerRating(userId)
-                val newElo = maxOf((rating?.elo ?: 1000) - 50, 0)
-                SupabaseClient.applyEloPenalty(userId, newElo)
+                SupabaseClient.applyEloDelta(userId, -50)
                 withContext(Dispatchers.Main) {
                     loadPlayerRating()
                 }
+
             }
 
             GbaRunManager.deleteRunFolder(runName, gameVersion)
                 .onSuccess {
                     if (activeRunFolder?.name == runName) {
-                        activeRunFolder = null
                         _uiState.update { it.copy(
                             activeGbaRun = null,
                             activeGame = null,
@@ -580,17 +661,19 @@ class HomeViewModel (
         _uiState.update { it.copy(activeGame = gameVersion) }
     }
 
+
     fun findCasualMatch() {
         viewModelScope.launch {
-            val currentRun = runRepository.currentRun.value
-
-            if (currentRun == null) {
+            val showdownName = uiState.value.showdownUsername.trim()
+            if (showdownName.isBlank()) {
+                _uiState.update { it.copy(gbaError = "Enter your Showdown username first") }
                 return@launch
             }
 
+            val currentRun = runRepository.currentRun.value
+            if (currentRun == null) return@launch
 
             val latestSnapshot = currentRun.badgeSnapshots.lastOrNull()
-
             if (latestSnapshot == null) {
                 _uiState.update { it.copy(gbaError = "No badge snapshot found. Beat a gym first!") }
                 return@launch
@@ -606,7 +689,6 @@ class HomeViewModel (
                 )
 
                 val opponent = SupabaseClient.findMatch(latestSnapshot.badgeNumber)
-
                 if (opponent == null) {
                     _uiState.update { it.copy(
                         isLoading = false,
@@ -630,6 +712,11 @@ class HomeViewModel (
                         showMatchDialog = true
                     ) }
 
+                    // Open Showdown in the browser so the user can log in and play
+                    BrowserLauncher.openUrl("http://localhost:8000/")
+
+                    // Start the bot — it will challenge the user's Showdown username
+                    startShowdownMatch(match)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -663,19 +750,19 @@ class HomeViewModel (
         }
     }
 
+
     fun startShowdownMatch(match: Match) {
         showdownJob?.cancel()
         showdownJob = viewModelScope.launch {
-            val playerUsername = uiState.value.username ?: "Player1"
+            val playerUsername = uiState.value.showdownUsername.trim()
+            if (playerUsername.isBlank()) {
+                _uiState.update { it.copy(gbaError = "No Showdown username set") }
+                return@launch
+            }
             val botUsername = "DualockeBot${System.currentTimeMillis() % 1000}"
 
             val myTeam = Json.decodeFromJsonElement<List<PokemonTeamMember>>(match.player1_team)
             val opponentTeam = Json.decodeFromJsonElement<List<PokemonTeamMember>>(match.player2_team)
-
-            val playerExport = showdownClient.generateShowdownExport(myTeam)
-            val botExport = showdownClient.generateShowdownExport(opponentTeam)
-
-            println("[SHOWDOWN] Starting match: $playerUsername vs $botUsername")
 
             showdownClient.startMatch(
                 playerUsername = playerUsername,
@@ -684,10 +771,10 @@ class HomeViewModel (
                 botTeam = opponentTeam,
                 onMatchStarted = { roomId ->
                     println("[SHOWDOWN] Match started in room: $roomId")
-                    _uiState.update { it.copy(
-                        showdownRoomId = roomId,
-                        showdownUrl = "http://localhost:8000/$roomId"
-                    ) }
+                    _uiState.update { it.copy(showdownRoomId = roomId) }
+
+                    // Optional: open the specific battle URL too, in case they're not already there
+                    BrowserLauncher.openUrl("http://localhost:8000/$roomId")
                 },
                 onWin = { winner ->
                     val playerWon = winner.equals(playerUsername, ignoreCase = true)
@@ -696,9 +783,7 @@ class HomeViewModel (
                         match.id?.let { matchId ->
                             SupabaseClient.reportMatchResult(matchId, playerWon)
                         }
-
                         loadPlayerRating()
-
                         _uiState.update { it.copy(
                             showMatchResult = true,
                             playerWon = playerWon,
@@ -727,7 +812,7 @@ class HomeViewModel (
 
     private fun loadPlayerRating() {
         viewModelScope.launch {
-            val userId = SupabaseClient.client.auth.currentUserOrNull()?.id ?: return@launch
+            val userId = UserSession.currentUserId.value ?: return@launch
             val rating = SupabaseClient.getPlayerRating(userId)
             println(" Loaded rating: elo=${rating?.elo} rank=${getRankFromElo(rating?.elo ?: 1000)}")
 
@@ -739,6 +824,13 @@ class HomeViewModel (
             println(" Updated uiState elo: ${uiState.value.elo}")
 
         }
+    }
+
+    private fun clearDeathTracking() {
+        println("🧹 Clearing death tracking state")
+        processedDeaths.clear()
+        deathTimestamps.clear()
+        baselineDeathCount = null
     }
 
     fun findRankedMatch() {

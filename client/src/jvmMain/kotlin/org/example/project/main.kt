@@ -1,6 +1,7 @@
 package org.example.project
 
 import androidx.compose.material.MaterialTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -121,10 +122,17 @@ data class LeaderboardEntry(
 
 
 fun main() = application {
+
+    LaunchedEffect(Unit) {
+        SupabaseClient.initializeSession()
+    }
+
     Window(
         onCloseRequest = ::exitApplication,
         title = "Dualocke",
     ) {
+
+
         MaterialTheme {
             val navController = rememberNavController()
             val scope = rememberCoroutineScope()

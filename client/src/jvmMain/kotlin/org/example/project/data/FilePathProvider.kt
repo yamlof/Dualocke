@@ -55,12 +55,17 @@ object FilePathProvider {
     }
 
     fun getRunsConfigPath(): String {
-        return File(getDataDirectory(), "runs.json").absolutePath
+        val userDir = File(getDataDirectory(), "users/${UserSession.activeUserId()}")
+        userDir.mkdirs()
+        return File(userDir, "runs.json").absolutePath
     }
 
     fun getRunsDirectory(gameVersion: GameVersion): File {
-        val runsDir = File(getSavesDirectory(), "runs/${gameVersion.name}")
-        if (!runsDir.exists()) runsDir.mkdirs()
+        val runsDir = File(
+            getSavesDirectory(),
+            "users/${UserSession.activeUserId()}/runs/${gameVersion.name}"
+        )
+        runsDir.mkdirs()
         return runsDir
     }
 
@@ -135,6 +140,12 @@ object FilePathProvider {
         val verifiedDir = File(getDataDirectory(), "verified")
         verifiedDir.mkdirs()
         File(verifiedDir, "${gameVersion.name}.verified").createNewFile()
+    }
+
+    fun getRomVerificationPath(gameVersion: GameVersion): String {
+        val verifiedDir = File(getDataDirectory(), "verified")
+        verifiedDir.mkdirs()
+        return File(verifiedDir, "${gameVersion.name}.verified").absolutePath
     }
 
 

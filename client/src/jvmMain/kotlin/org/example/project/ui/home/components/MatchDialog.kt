@@ -11,13 +11,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.ui.Alignment
@@ -33,9 +37,12 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import org.example.project.Match
 import org.example.project.domain.models.PokemonTeamMember
 
+
 @Composable
 fun MatchDialog(
     match: Match,
+    showdownUsername: String,
+    onUsernameChange: (String) -> Unit,
     showdownUrl: String?,
     onStartBattle: () -> Unit,
     onWin: () -> Unit,
@@ -47,12 +54,13 @@ fun MatchDialog(
             shape = RoundedCornerShape(20.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.9f)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(24.dp)
+                    .verticalScroll(rememberScrollState())  // dialog can get tall
             ) {
                 // Header
                 Text(
@@ -67,14 +75,13 @@ fun MatchDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // Teams side by side
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Your team
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             "Your Team",
@@ -84,9 +91,7 @@ fun MatchDialog(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         val myTeam = Json.decodeFromJsonElement<List<PokemonTeamMember>>(match.player1_team)
-                        myTeam.forEach { mon ->
-                            TeamMonRow(mon = mon)
-                        }
+                        myTeam.forEach { mon -> TeamMonRow(mon = mon) }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             "Deaths: ${match.player1_deaths}",
@@ -95,10 +100,8 @@ fun MatchDialog(
                         )
                     }
 
-                    // Divider
                     VerticalDivider(modifier = Modifier.fillMaxHeight(0.8f))
 
-                    // Opponent team
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             "Opponent",
@@ -108,9 +111,7 @@ fun MatchDialog(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         val opponentTeam = Json.decodeFromJsonElement<List<PokemonTeamMember>>(match.player2_team)
-                        opponentTeam.forEach { mon ->
-                            TeamMonRow(mon = mon)
-                        }
+                        opponentTeam.forEach { mon -> TeamMonRow(mon = mon) }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             "Deaths: ${match.player2_deaths}",
@@ -120,27 +121,86 @@ fun MatchDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.height(20.dp))
 
-                Button(
-                    onClick = {
-                        val myTeam = Json.decodeFromJsonElement<List<PokemonTeamMember>>(match.player1_team)
-                        val exportString = generateShowdownExport(myTeam)
-                        // Copy to clipboard
-                        val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-                        clipboard.setContents(java.awt.datatransfer.StringSelection(exportString), null)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
-                    )
-                ) {
-                    Text("📋 Copy My Team for Showdown")
-                }
+                // Showdown setup section — visible until the bot creates the room
+                if (showdownUrl == null) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                "Setup",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "1. Copy your team below\n" +
+                                        "2. Open Showdown and log in with the username you'll use\n" +
+                                        "3. Enter that same username here\n" +
+                                        "4. Click Start Battle — the bot will challenge you",
+                                style = MaterialTheme.typography.bodySmall
+                            )
 
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                // Replace the instructions card with:
-                if (showdownUrl != null) {
+                            Button(
+                                onClick = {
+                                    val myTeam = Json.decodeFromJsonElement<List<PokemonTeamMember>>(match.player1_team)
+                                    val exportString = generateShowdownExport(myTeam)
+                                    val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                                    clipboard.setContents(java.awt.datatransfer.StringSelection(exportString), null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondary
+                                )
+                            ) {
+                                Text("📋 Copy My Team for Showdown")
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedButton(
+                                onClick = {
+                                    java.awt.Desktop.getDesktop()
+                                        .browse(java.net.URI("http://localhost:8000/"))
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("🌐 Open Showdown")
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            OutlinedTextField(
+                                value = showdownUsername,
+                                onValueChange = onUsernameChange,
+                                label = { Text("Your Showdown username") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Button(
+                                onClick = onStartBattle,
+                                enabled = showdownUsername.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Text("⚔️ Start Battle", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    // Battle is live
                     Card(
                         colors = CardDefaults.cardColors(
                             containerColor = Color(0xFF4CAF50).copy(alpha = 0.1f)
@@ -151,7 +211,12 @@ fun MatchDialog(
                             Text("✅ Battle Room Ready!", fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                showdownUrl!!,
+                                "Accept the challenge from the bot in Showdown.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                showdownUrl,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -159,7 +224,7 @@ fun MatchDialog(
                             Button(
                                 onClick = {
                                     java.awt.Desktop.getDesktop()
-                                        .browse(java.net.URI(showdownUrl!!))
+                                        .browse(java.net.URI(showdownUrl))
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -167,42 +232,32 @@ fun MatchDialog(
                             }
                         }
                     }
-                } else {
-                    Button(
-                        onClick = { onStartBattle() },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Text("⚔️ Start Battle", fontWeight = FontWeight.Bold)
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Result buttons
+                // Manual fallback result buttons
+                Text(
+                    "Manual result (auto-detection should handle this normally):",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Button(
+                    OutlinedButton(
                         onClick = onWin,
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF4CAF50)
-                        )
                     ) {
-                        Text("🏆 I Won!", fontWeight = FontWeight.Bold)
+                        Text("🏆 I Won")
                     }
-                    Button(
+                    OutlinedButton(
                         onClick = onLoss,
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error
-                        )
                     ) {
-                        Text("💀 I Lost", fontWeight = FontWeight.Bold)
+                        Text("💀 I Lost")
                     }
                 }
             }

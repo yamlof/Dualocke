@@ -56,6 +56,8 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import monitor.ProcessMonitor
+import org.example.project.EmulatorInput
+import org.example.project.emulator.EmulatorSession
 import org.example.project.ui.home.components.GameLibraryDialog
 import org.example.project.ui.home.components.LivePartyDataSection
 import org.example.project.ui.home.components.MatchDialog
@@ -70,8 +72,9 @@ import org.example.project.utils.getRankFromElo
 
 @Composable
 fun HomeScreen(
-    viewModel: HomeViewModel = remember { HomeViewModel() },
+    viewModel: HomeViewModel,
     onLogout: () -> Unit,
+    onLaunchEmulator:() -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val allRuns by viewModel.runRepository.allRuns.collectAsState()
@@ -94,14 +97,16 @@ fun HomeScreen(
         uiState = uiState,
         emulatorFrame = emulatorFrame,
         onLogout = onLogout,
-        onLaunchGame = { viewModel.launchGame() },
+        onLaunchGame = { viewModel.launchGame(onLaunched = onLaunchEmulator) },
         onFindCasualMatch = { viewModel.findCasualMatch() },
         onFindRankedMatch = { viewModel.findRankedMatch() },
         onChangeRun = { showGameLibrary = true },
         onViewLeaderboards = { viewModel.toggleLeaderboard() },
         onViewHistory = { viewModel.viewHistory() },
         onViewCommunity = { viewModel.toggleLeaderboard() },
-        onOpenSettings = { viewModel.openSettings() }
+        onOpenSettings = { viewModel.openSettings() },
+        session = viewModel.emulatorSession,
+        onResumeGame = onLaunchEmulator
     )
 
     if (showGameLibrary){
@@ -271,6 +276,7 @@ fun rememberPartyViewModel() : PartyViewModel{
 private fun HomeScreenContent(
     uiState: HomeUiState,
     emulatorFrame: ImageBitmap?,
+    session: EmulatorSession,
     onLogout: () -> Unit,
     onLaunchGame :() -> Unit,
     onFindCasualMatch:() -> Unit,
@@ -280,6 +286,7 @@ private fun HomeScreenContent(
     onViewHistory: () -> Unit,
     onViewCommunity: () -> Unit,
     onOpenSettings: () -> Unit,
+    onResumeGame:() -> Unit
 ){
     Column(
         modifier = Modifier
@@ -342,8 +349,8 @@ private fun HomeScreenContent(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Button(
-                    onClick = onLaunchGame,
-                    enabled = uiState.romLoaded && !uiState.isSwitchingRun && emulatorFrame == null,
+                    onClick = if (emulatorFrame != null) onResumeGame else onLaunchGame,
+                    enabled = uiState.romLoaded && !uiState.isSwitchingRun,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(64.dp),
@@ -374,14 +381,13 @@ private fun HomeScreenContent(
                         Text(
                             when {
                                 !uiState.romLoaded -> "No ROM Loaded"
-                                emulatorFrame != null -> "Game Running"
+                                emulatorFrame != null -> "Resume Game"
                                 else -> "Launch Game"
                             },
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
                     }
-
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -422,22 +428,12 @@ private fun HomeScreenContent(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                if (emulatorFrame != null) {
-                    Image(
-                        painter = BitmapPainter(emulatorFrame),
-                        contentDescription = "Game",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(240f / 160f)
-                    )
-                } else {
-                    LivePartyDataSection(
-                        partyLines = uiState.partyLines,
-                        isMgbaRunning = uiState.isConnected,
-                        snapshot = uiState.latestSnapshot,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                LivePartyDataSection(
+                    partyLines = uiState.partyLines,
+                    isMgbaRunning = uiState.isConnected,
+                    snapshot = uiState.latestSnapshot,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }

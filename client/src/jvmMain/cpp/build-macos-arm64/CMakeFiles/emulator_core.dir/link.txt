@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -arch arm64 -dynamiclib -Wl,-headerpad_max_install_names -o /Users/edwinigbinoba/Documents/code/True-Dualocke/client/src/jvmMain/resources/native/macos-arm64/libemulator_core.dylib -install_name @rpath/libemulator_core.dylib CMakeFiles/emulator_core.dir/libretro_bridge.cpp.o

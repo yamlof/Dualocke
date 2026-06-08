@@ -41,12 +41,12 @@ import java.io.File
 import java.lang.Exception
 
 class HomeViewModel (
+    val emulatorSession: EmulatorSession,
     val runRepository: RunRepository = RunRepository()
 ): ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
-    private val emulatorSession = EmulatorSession()
     val emulatorFrame = emulatorSession.frame
 
     private val tcpClient = LuaTcpClient()
@@ -331,12 +331,14 @@ class HomeViewModel (
         _uiState.update { it.copy(isConnected = false) }
     }
 
-    fun launchGame() {
+    fun launchGame(onLaunched: () -> Unit) {
         val rom = FilePathProvider.getActiveRomFile() ?: run {
-            _uiState.update { it.copy(gbaError = "No ROM found. Import a ROM first.") }
+            _uiState.update { it.copy(gbaError = "No ROM loaded") }
             return
         }
-        if (!emulatorSession.start(rom.absolutePath)) {
+        if (emulatorSession.start(rom.absolutePath)) {
+            onLaunched()
+        } else {
             _uiState.update { it.copy(gbaError = "Failed to start emulator") }
         }
     }
@@ -782,7 +784,6 @@ class HomeViewModel (
 
     override fun onCleared() {
         super.onCleared()
-        emulatorSession.dispose()
         pokeApiClient.close()
         showdownClient.disconnect()
         tcpClient.disconnect()

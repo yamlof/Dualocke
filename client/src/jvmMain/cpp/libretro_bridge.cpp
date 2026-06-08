@@ -459,6 +459,45 @@ if (!mem || (size_t)offset >= size) return;
 mem[offset] = (uint8_t)(value & 0xFF);
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_org_example_project_LibretroCore_nativeGetSaveRam(
+        JNIEnv* env, jobject /*self*/) {
+
+    if (!g_coreHandle || !p_retro_get_memory_data) return nullptr;
+
+    uint8_t* mem = (uint8_t*)p_retro_get_memory_data(0); // RETRO_MEMORY_SAVE_RAM
+    size_t size = p_retro_get_memory_size(0);
+    if (!mem || size == 0) return nullptr;
+
+    jbyteArray result = env->NewByteArray((jsize)size);
+    if (!result) return nullptr;
+
+    env->SetByteArrayRegion(result, 0, (jsize)size, (const jbyte*)mem);
+    return result;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_example_project_LibretroCore_nativeSetSaveRam(
+        JNIEnv* env, jobject /*self*/, jbyteArray data) {
+
+    if (!g_coreHandle || !p_retro_get_memory_data || !data) return JNI_FALSE;
+
+    uint8_t* mem = (uint8_t*)p_retro_get_memory_data(0);
+    size_t size = p_retro_get_memory_size(0);
+    if (!mem || size == 0) return JNI_FALSE;
+
+    jsize incoming = env->GetArrayLength(data);
+    if ((size_t)incoming != size) {
+        fprintf(stderr, "[libretro] setSaveRam size mismatch: incoming=%d, expected=%zu\n",
+                incoming, size);
+        fflush(stderr);
+        return JNI_FALSE;
+    }
+
+    env->GetByteArrayRegion(data, 0, incoming, (jbyte*)mem);
+    return JNI_TRUE;
+}
+
 JNIEXPORT void JNICALL
 Java_org_example_project_LibretroCore_nativeReset(
         JNIEnv* /*env*/, jobject /*self*/) {

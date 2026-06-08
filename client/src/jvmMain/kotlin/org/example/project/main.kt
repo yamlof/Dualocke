@@ -1,6 +1,8 @@
 package org.example.project
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.navigation.compose.NavHost
@@ -12,6 +14,7 @@ import org.example.project.ui.auth.LoginScreen
 import org.example.project.ui.auth.RegisterScreen
 import org.example.project.ui.auth.TitleScreen
 import org.example.project.ui.home.HomeScreen
+import org.example.project.ui.home.HomeViewModel
 
 @Serializable
 object LoginScreenDestination
@@ -116,12 +119,27 @@ data class LeaderboardEntry(
 
 @Serializable object TitleScreenDestination
 
+@Serializable object EmulatorScreenDestination   // ← new
 
 fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "Dualocke",
     ) {
+        // App-level container — created once, lives for the whole window.
+        val appContainer = remember { AppContainer() }
+
+        // Make sure native resources are freed if the window closes.
+        DisposableEffect(Unit) {
+            onDispose { appContainer.dispose() }
+        }
+
+        // HomeViewModel is hoisted up here so it survives navigation to
+        // EmulatorScreen and back. Compose Navigation already keeps Home on
+        // the back stack, but by creating the VM here we can pass the
+        // session through cleanly.
+        val homeViewModel = remember { HomeViewModel(appContainer.emulatorSession) }
+
         val navController = rememberNavController()
         MaterialTheme {
             NavHost(navController = navController, startDestination = TitleScreenDestination) {
@@ -152,11 +170,25 @@ fun main() = application {
                 }
                 composable<HomeScreenDestination> {
                     HomeScreen(
+                        viewModel = homeViewModel,
                         onLogout = {
                             navController.navigate(TitleScreenDestination) {
                                 popUpTo<HomeScreenDestination> { inclusive = true }
                             }
-                        }
+                        },
+                        onLaunchEmulator = {
+                            navController.navigate(EmulatorScreenDestination)
+                        },
+                    )
+                }
+                composable<EmulatorScreenDestination> {
+                    EmulatorScreen(
+                        session = appContainer.emulatorSession,
+                        onBack = { navController.popBackStack() },
+                        onQuitGame = {
+                            // Session was stopped inside EmulatorScreen.
+                            navController.popBackStack()
+                        },
                     )
                 }
             }

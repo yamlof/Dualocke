@@ -1,0 +1,3 @@
+/Users/edwinigbinoba/Documents/code/True-Dualocke/client/src/jvmMain/cpp/build-macos-arm64/CMakeFiles/emulator_core.dir
+/Users/edwinigbinoba/Documents/code/True-Dualocke/client/src/jvmMain/cpp/build-macos-arm64/CMakeFiles/edit_cache.dir
+/Users/edwinigbinoba/Documents/code/True-Dualocke/client/src/jvmMain/cpp/build-macos-arm64/CMakeFiles/rebuild_cache.dir

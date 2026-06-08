@@ -34,6 +34,9 @@ class LibretroCore {
     private external fun nativeUnloadGame()
     private external fun nativeUnloadCore()
 
+    private external fun nativeGetSaveRam(): ByteArray?
+    private external fun nativeSetSaveRam(data: ByteArray): Boolean
+
     // --- Public state ---
     val frameWidth: Int  get() = nativeGetFrameWidth()
     val frameHeight: Int get() = nativeGetFrameHeight()
@@ -109,6 +112,10 @@ class LibretroCore {
         val b1 = readByte(offset + 1) and 0xFF
         return b0 or (b1 shl 8)
     }
+
+    fun getSaveRam(): ByteArray? = nativeGetSaveRam()
+
+    fun setSaveRam(data: ByteArray): Boolean = nativeSetSaveRam(data)
 
     companion object {
         init {
@@ -215,15 +222,15 @@ object NativeLoader {
         val resourcePath = "/cores/${Platform.resourceFolder}/$fileName"
         val target = cacheDir.resolve(fileName).toFile()
 
-        if (!target.exists()) {
-            val stream = NativeLoader::class.java.getResourceAsStream(resourcePath)
-                ?: error("Core not found in resources: $resourcePath")
-            stream.use { input ->
-                target.outputStream().use { input.copyTo(it) }
-            }
-            if (Platform.os != Platform.OS.WINDOWS) {
-                target.setExecutable(true)
-            }
+        if (target.exists()) target.delete()   // ← changed: always re-extract
+
+        val stream = NativeLoader::class.java.getResourceAsStream(resourcePath)
+            ?: error("Core not found in resources: $resourcePath")
+        stream.use { input ->
+            target.outputStream().use { input.copyTo(it) }
+        }
+        if (Platform.os != Platform.OS.WINDOWS) {
+            target.setExecutable(true)
         }
         return target.absolutePath
     }
@@ -233,12 +240,12 @@ object NativeLoader {
         val resourcePath = "/native/${Platform.resourceFolder}/$fileName"
 
         val target = cacheDir.resolve(fileName).toFile()
-        if (!target.exists()) {
-            val stream = NativeLoader::class.java.getResourceAsStream(resourcePath)
-                ?: error("Native lib not found: $resourcePath")
-            stream.use { input ->
-                target.outputStream().use { input.copyTo(it) }
-            }
+        if (target.exists()) target.delete()   // ← always re-extract
+
+        val stream = NativeLoader::class.java.getResourceAsStream(resourcePath)
+            ?: error("Native lib not found: $resourcePath")
+        stream.use { input ->
+            target.outputStream().use { input.copyTo(it) }
         }
         System.load(target.absolutePath)
     }

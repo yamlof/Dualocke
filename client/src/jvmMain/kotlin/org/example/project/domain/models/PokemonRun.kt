@@ -20,7 +20,7 @@ data class PokemonRun(
     val badges: Int = 0,
     val deaths: Int = 0,
     val pokemonTeam : List<PokemonTeamMember> = emptyList(),
-    val badgeSnapshots: List<BadgeSnapshot> = emptyList(),  // add this
+    val badgeSnapshots: List<BadgeSnapshot> = emptyList(),
     val isActive: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val lastPlayedAt: Long = System.currentTimeMillis(),

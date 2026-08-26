@@ -30,6 +30,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.io.File
+import java.nio.file.Paths
 
 @Composable
 fun TitleScreen(
@@ -37,11 +38,17 @@ fun TitleScreen(
     onRegisterClick: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // Background image with blur overlay
 
         val bitmap = remember {
             val file =
-                File("resources/kanto.png")
+                Paths.get(
+                    System.getProperty("user.home"),
+                    "Documents",
+                    "Dualocke",
+                    "client",
+                    "resources",
+                    "kanto.png"
+                ).toFile()
             org.jetbrains.skia.Image.makeFromEncoded(file.readBytes()).toComposeImageBitmap()
         }
 
@@ -54,7 +61,6 @@ fun TitleScreen(
                 .blur(20.dp)
         )
 
-        // Dark overlay to make text readable
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -107,7 +113,14 @@ fun TitleScreen(
 @Composable
 fun AuthBackground(content: @Composable BoxScope.() -> Unit) {
     val bitmap = remember {
-        val file = File("resources/kanto.png")
+        val file = Paths.get(
+            System.getProperty("user.home"),
+            "Documents",
+            "Dualocke",
+            "client",
+            "resources",
+            "kanto.png"
+        ).toFile()
         org.jetbrains.skia.Image.makeFromEncoded(file.readBytes()).toComposeImageBitmap()
     }
 

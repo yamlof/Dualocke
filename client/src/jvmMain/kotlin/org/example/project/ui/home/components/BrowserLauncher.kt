@@ -11,7 +11,6 @@ object BrowserLauncher {
                 Desktop.getDesktop().browse(URI(url))
                 true
             } else {
-                // Fallback for systems without Desktop support
                 val os = System.getProperty("os.name").lowercase()
                 val command = when {
                     os.contains("mac") -> arrayOf("open", url)
@@ -22,7 +21,7 @@ object BrowserLauncher {
                 true
             }
         } catch (e: Exception) {
-            println("❌ Failed to open browser: ${e.message}")
+            println("Failed to open browser: ${e.message}")
             false
         }
     }

@@ -39,7 +39,7 @@ class ShowdownClient(
     suspend fun startMatch(
         playerUsername: String,
         botUsername: String,
-        playerTeam: List<PokemonTeamMember>,  // kept for API compat; not used (player builds their own team)
+        playerTeam: List<PokemonTeamMember>,
         botTeam: List<PokemonTeamMember>,
         onMatchStarted: (roomId: String) -> Unit,
         onWin: (winner: String) -> Unit,
@@ -82,7 +82,6 @@ class ShowdownClient(
             val message = frame.readText()
             println("[SHOWDOWN BOT] $message")
 
-            // Showdown messages may have a room prefix line: ">battle-xyz\n|init|battle\n..."
             val lines = message.split("\n")
             val roomId = if (message.startsWith(">")) {
                 lines.first().removePrefix(">").trim()
@@ -91,7 +90,7 @@ class ShowdownClient(
             for (line in lines) {
                 when {
                     line.startsWith("|challstr|") -> {
-                        // --no-security mode: log in by name only
+
                         send("|/trn $botUsername,0,")
                         println("[SHOWDOWN] Bot logging in as $botUsername")
                     }
@@ -106,7 +105,6 @@ class ShowdownClient(
                         send("|/utm ${generateShowdownExport(botTeam)}")
                         delay(500)
 
-                        // Challenge the player. They must already be logged in on Showdown.
                         send("|/challenge $playerUsername, gen9customgame")
                         challengeSent = true
                         println("[SHOWDOWN] Bot challenged $playerUsername")
@@ -135,7 +133,6 @@ class ShowdownClient(
                         }
                     }
 
-                    // Player rejected or didn't accept the challenge in time
                     line.startsWith("|popup|") && challengeSent -> {
                         val popup = line.substringAfter("|popup|")
                         println("[SHOWDOWN] Server popup: $popup")
@@ -151,15 +148,12 @@ class ShowdownClient(
     ) {
         try {
             val request = Json.parseToJsonElement(requestJson).jsonObject
-
             // Team preview
             if (request["teamPreview"]?.jsonPrimitive?.booleanOrNull == true) {
                 send("$roomId|/team 123456")
                 println("[SHOWDOWN] Bot sent team order")
-                return
-            }
-
-            // Force switch (current pokemon fainted)
+                return }
+            // Force switch
             val forceSwitch = request["forceSwitch"]?.jsonArray
             if (forceSwitch != null && forceSwitch.firstOrNull()?.jsonPrimitive?.booleanOrNull == true) {
                 val side = request["side"]?.jsonObject
@@ -175,18 +169,13 @@ class ShowdownClient(
                     send("$roomId|/choose switch ${switchIndex + 1}")
                     println("[SHOWDOWN] Bot switched to slot ${switchIndex + 1}")
                 } else {
-                    send("$roomId|/choose default")
-                }
-                return
-            }
-
-            // Wait turn (e.g., opponent is force-switching)
+                    send("$roomId|/choose default") }
+                return }
+            // Wait turn
             if (request["wait"]?.jsonPrimitive?.booleanOrNull == true) {
                 println("[SHOWDOWN] Bot waiting (no action required)")
-                return
-            }
-
-            // Normal turn — pick first available move
+                return }
+            // Normal turn
             val active = request["active"]?.jsonArray?.firstOrNull()?.jsonObject
             val moves = active?.get("moves")?.jsonArray
 
@@ -197,21 +186,17 @@ class ShowdownClient(
                     val pp = obj["pp"]?.jsonPrimitive?.intOrNull ?: 1
                     !disabled && pp > 0
                 }?.index
-
                 if (moveIndex != null) {
                     send("$roomId|/choose move ${moveIndex + 1}")
                     println("[SHOWDOWN] Bot used move ${moveIndex + 1}")
                 } else {
                     send("$roomId|/choose default")
-                    println("[SHOWDOWN] Bot fell back to default (no usable moves)")
-                }
+                    println("[SHOWDOWN] Bot fell back to default (no usable moves)") }
             } else {
-                send("$roomId|/choose default")
-            }
+                send("$roomId|/choose default") }
         } catch (e: Exception) {
             println("[SHOWDOWN] Error parsing request: ${e.message}, falling back to default")
-            send("$roomId|/choose default")
-        }
+            send("$roomId|/choose default") }
     }
 
     fun generateShowdownExport(team: List<PokemonTeamMember>): String {

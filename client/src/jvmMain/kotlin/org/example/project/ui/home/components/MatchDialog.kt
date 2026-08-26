@@ -60,7 +60,7 @@ fun MatchDialog(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(24.dp)
-                    .verticalScroll(rememberScrollState())  // dialog can get tall
+                    .verticalScroll(rememberScrollState())
             ) {
                 // Header
                 Text(
@@ -123,7 +123,7 @@ fun MatchDialog(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Showdown setup section — visible until the bot creates the room
+                // Showdown setup section visible until the bot creates the room
                 if (showdownUrl == null) {
                     Card(
                         colors = CardDefaults.cardColors(
@@ -236,7 +236,6 @@ fun MatchDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Manual fallback result buttons
                 Text(
                     "Manual result (auto-detection should handle this normally):",
                     style = MaterialTheme.typography.labelSmall,

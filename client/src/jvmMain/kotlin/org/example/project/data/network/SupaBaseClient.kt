@@ -41,17 +41,16 @@ object SupabaseClient {
     }
 
     suspend fun initializeSession() {
-        // Supabase auth restores asynchronously; wait for it
         client.auth.awaitInitialization()
 
         val userId = client.auth.currentUserOrNull()?.id
         if (userId != null) {
             UserSession.setUser(userId)
-            println("✅ Restored session for user: $userId")
+            println("Restored session for user: $userId")
         } else {
             println("ℹ️ No restored session — running as guest")
         }
-        RunRepository.initialize()  // load whatever user is now active
+        RunRepository.initialize()
 
     }
 
@@ -73,7 +72,6 @@ object SupabaseClient {
                 )
             )
 
-        // ⬇️ Set the session AFTER profile is created
         UserSession.setUser(userId)
         RunRepository.reloadForUser()
     }
@@ -85,7 +83,6 @@ object SupabaseClient {
             this.password = password
         }
 
-        // ⬇️ Set the session immediately after login succeeds
         val userId = client.auth.currentUserOrNull()?.id
             ?: error("Login succeeded but no user ID")
         UserSession.setUser(userId)
@@ -96,9 +93,8 @@ object SupabaseClient {
     suspend fun logout() {
         client.auth.signOut()
 
-        // ⬇️ Clear session AFTER signOut
         UserSession.clear()
-        RunRepository.reloadForUser()  // reloads as "guest"
+        RunRepository.reloadForUser()
     }
 
     suspend fun getUsername(): Profile? {
@@ -132,7 +128,7 @@ object SupabaseClient {
                 elo = rating?.elo ?: 1000
             ))
 
-        println("✅ Queued for match: badge $badgeCount")
+        println("Queued for match: badge $badgeCount")
         return userId
     }
 
@@ -193,7 +189,7 @@ object SupabaseClient {
         client.from("match_queue")
             .delete { filter { eq("player_id", userId) } }
 
-        println("✅ Match created: ${created.id}")
+        println("Match created: ${created.id}")
         return created
     }
 
@@ -235,7 +231,7 @@ object SupabaseClient {
         // Update player rating
         updatePlayerRating(userId, newElos.first, won)
 
-        println("✅ Match result: ${if (won) "WIN" else "LOSS"}, new Elo: ${newElos.first}")
+        println("Match result: ${if (won) "WIN" else "LOSS"}, new Elo: ${newElos.first}")
         return true
     }
 
@@ -319,7 +315,7 @@ object SupabaseClient {
                 )
             }
         } catch (e: Exception) {
-            println("❌ Leaderboard error: ${e.message}")
+            println("Leaderboard error: ${e.message}")
             emptyList()
         }
     }
@@ -336,7 +332,7 @@ object SupabaseClient {
             )
             response.data.toIntOrNull()
         } catch (e: Exception) {
-            println("❌ Elo delta error: ${e.message}")
+            println(" Elo delta error: ${e.message}")
             null
         }
     }

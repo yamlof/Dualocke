@@ -14,24 +14,23 @@ object GbaRunManager {
             val activeSav = FilePathProvider.getActiveSavFile()
                 ?: return Result.failure(Exception("No active .sav found"))
             activeSav.copyTo(File(runFolder, activeSav.name), overwrite = true)
-            println("💾 Backed up to ${runFolder.name}/")
+            println("Backed up to ${runFolder.name}/")
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-
     private fun loadRunSave(runFolder: File): Result<Unit> {
         return try {
             val runSav = getSavInRunFolder(runFolder)
             if (runSav == null) {
-                println("⚠️ No save in folder yet: ${runFolder.name}")
+                println("No save in folder yet: ${runFolder.name}")
                 return Result.success(Unit)
             }
             val activeSavPath = File(FilePathProvider.getRomsDirectory(), runSav.name)
             runSav.copyTo(activeSavPath, overwrite = true)
-            println("▶️ Loaded save from ${runFolder.name}/")
+            println("Loaded save from ${runFolder.name}/")
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -42,7 +41,7 @@ object GbaRunManager {
         if (currentRunFolder != null) {
             backupActiveSave(currentRunFolder)
                 .onFailure {
-                    println("⚠️ Backup skipped: ${it.message}")
+                    println("Backup skipped: ${it.message}")
                 }
         }
         return loadRunSave(targetRunFolder)
@@ -54,18 +53,6 @@ object GbaRunManager {
             if (!runFolder.exists())
                 return Result.failure(Exception("Run '$runName' not found"))
             runFolder.deleteRecursively()
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    fun deleteActiveSave(): Result<Unit> {
-        return try {
-            val activeSav = FilePathProvider.getActiveSavFile()
-                ?: return Result.failure(Exception("No active save found"))
-            activeSav.delete()
-            println("🗑️ Deleted active save")
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

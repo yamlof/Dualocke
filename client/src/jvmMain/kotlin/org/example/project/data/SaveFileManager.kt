@@ -28,9 +28,6 @@ object SaveFileManager {
         val a = maxSaveIndex(baseA)
         val b = maxSaveIndex(baseB)
 
-        println("Save A max index: $a")
-        println("Save B max index: $b")
-
         return if (b >= a) baseB else baseA
     }
 

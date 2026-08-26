@@ -64,7 +64,7 @@ fun GameLibraryDialog(
     if (showDeleteWarning != null) {
         AlertDialog(
             onDismissRequest = { showDeleteWarning = null },
-            title = { Text("⚠️ Delete Run?") },
+            title = { Text("Delete Run?") },
             text = {
                 Text("Deleting this run will permanently remove your save data. Your Elo rating will decrease by 50 points as a penalty for abandoning a run. This cannot be undone.")
             },
@@ -120,7 +120,7 @@ fun GameLibraryDialog(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 } else {
-                    // Save slots for selected game
+
                     Row(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -148,7 +148,7 @@ fun GameLibraryDialog(
                         },
                         onCreateSlot = { name -> onCreateSlot(selectedGame!!, name) },
                         onDeleteSlot = { name ->
-                            showDeleteWarning = Pair(selectedGame!!, name)  // show warning instead of deleting
+                            showDeleteWarning = Pair(selectedGame!!, name)
                         }
                     )
                 }
@@ -187,7 +187,7 @@ fun GameLibraryItem(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    if (isVerified) "Verified ✅" else "ROM not verified",
+                    if (isVerified) "Verified" else "ROM not verified",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (isVerified)
                         Color(0xFF4CAF50)

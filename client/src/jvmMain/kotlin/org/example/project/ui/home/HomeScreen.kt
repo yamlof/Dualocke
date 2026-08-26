@@ -57,7 +57,6 @@ import org.example.project.ui.home.components.LivePartyDataSection
 import org.example.project.ui.home.components.MatchDialog
 import org.example.project.ui.home.components.MatchSection
 import org.example.project.ui.home.components.QuickActionGrid
-import org.example.project.ui.home.components.RunSelectionDialog
 import org.example.project.ui.home.components.SelectedRunCard
 import org.example.project.ui.home.components.SmallTopAppBar
 import org.example.project.ui.home.components.WelcomeSection
@@ -174,9 +173,9 @@ fun HomeScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = when(index) {
-                                    0 -> Color(0xFFFFD700) // gold
-                                    1 -> Color(0xFFC0C0C0) // silver
-                                    2 -> Color(0xFFCD7F32) // bronze
+                                    0 -> Color(0xFFFFD700)
+                                    1 -> Color(0xFFC0C0C0)
+                                    2 -> Color(0xFFCD7F32)
                                     else -> MaterialTheme.colorScheme.onSurface
                                 },
                                 modifier = Modifier.width(40.dp)
@@ -290,7 +289,7 @@ private fun HomeScreenContent(
                 .padding(24.dp),
             horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // Left Column - Main Content
+            // Left Column Main Content
             Column(
                 modifier = Modifier
                     .weight(1.5f)
@@ -378,7 +377,7 @@ private fun HomeScreenContent(
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
-            // Right Column - Live Data & Info
+            // Right Column Live Data & Info
             Column(
                 modifier = Modifier
                     .weight(1f)

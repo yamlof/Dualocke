@@ -30,19 +30,19 @@ object RunRepository {
 
     private fun loadRuns() {
         try {
-            val path = FilePathProvider.getRunsConfigPath()  // ⬅️ resolved fresh
+            val path = FilePathProvider.getRunsConfigPath()
             val configFile = File(path)
-            println("📂 Loading runs from: $path")
+            println("Loading runs from: $path")
             if (configFile.exists()) {
                 val jsonString = configFile.readText()
                 val runs = json.decodeFromString<List<PokemonRun>>(jsonString)
                 _allRuns.value = runs
                 _currentRun.value = runs.firstOrNull { it.isActive }
-                println("📂 Loaded ${runs.size} runs")
+                println("Loaded ${runs.size} runs")
             } else {
                 _allRuns.value = emptyList()
                 _currentRun.value = null
-                println("📂 No runs file yet for this user")
+                println("No runs file yet for this user")
             }
         } catch (e: Exception) {
             println("Error loading runs: ${e.message}")
@@ -82,7 +82,7 @@ object RunRepository {
                         FireRedTextDecoder.decodeFRString(nameBytes)
                     }
                 } catch (e: Exception) {
-                    println("⚠️ Could not read trainer name: ${e.message}")
+                    println("Could not read trainer name: ${e.message}")
                     "Unknown"
                 }
             } else {
@@ -164,12 +164,9 @@ object RunRepository {
     suspend fun loadRunData(run: PokemonRun): Result<RunData>{
         return try {
 
-
             val activeSav = FilePathProvider.getActiveSavFile()
 
-            // Return empty data if no save file exists yet
             if (activeSav == null || !activeSav.exists() || activeSav.length() < 1000) {
-                println("⚠️ No valid save file yet")
                 return Result.success(RunData(
                     trainerName = "Unknown",
                     teamMembers = emptyList(),
@@ -177,7 +174,6 @@ object RunRepository {
                 ))
             }
 
-            println("📖 Reading save from: ${activeSav.absolutePath}")
             val saveData = SaveFileManager.readSaveFile(activeSav.absolutePath)
             val saveBase = SaveFileManager.getActiveFireRedSaveBase(saveData)
 
@@ -186,7 +182,6 @@ object RunRepository {
 
             val nameBytes = saveData.copyOfRange(trainerSection, trainerSection + 7)
             val trainerName = FireRedTextDecoder.decodeFRString(nameBytes)
-            println("👤 Trainer name from save: $trainerName")
 
             val teamSizeBytes = saveData.copyOfRange(
                 teamItemSection + 0x0034,
@@ -208,13 +203,12 @@ object RunRepository {
                 val pokemonBytesName = pokemonData.copyOfRange(0x08, 0x08 + 10)
                 val nickname = FireRedTextDecoder.decodeFRString(pokemonBytesName)
 
-                // You can extract more data here (level, species, etc.)
                 teamMembers.add(
                     PokemonTeamMember(
                         name = nickname.trim(),
-                        species = nickname.trim(), // TODO: Get actual species
-                        level = pokemonData[0x54].toInt() and 0xFF, // TODO: Extract level from save
-                        iconUrl = "" // Will be loaded separately
+                        species = nickname.trim(),
+                        level = pokemonData[0x54].toInt() and 0xFF,
+                        iconUrl = ""
                     )
                 )
             }
@@ -320,7 +314,7 @@ object RunRepository {
             if (run.id == runId) {
                 val alreadyExists = run.badgeSnapshots.any { it.badgeNumber == badgeNumber }
                 if (!alreadyExists) {
-                    println("📸 Saving badge $badgeNumber snapshot: ${team.size} pokemon, $deaths deaths")
+                    println("Saving badge $badgeNumber snapshot: ${team.size} pokemon, $deaths deaths")
                     run.copy(
                         badges = badgeNumber,
                         badgeSnapshots = run.badgeSnapshots + BadgeSnapshot(
@@ -330,7 +324,7 @@ object RunRepository {
                         )
                     )
                 } else {
-                    println("⏭️ Badge $badgeNumber snapshot already exists, skipping")
+                    println("Badge $badgeNumber snapshot already exists, skipping")
                     run
                 }
             } else run
@@ -341,8 +335,8 @@ object RunRepository {
     }
 
     fun reloadForUser() {
-        println("🔄 reloadForUser called")
-        loadRuns()  // ⬅️ just reuse the logic, don't duplicate it
+        println("reloadForUser called")
+        loadRuns()
     }
 
 }

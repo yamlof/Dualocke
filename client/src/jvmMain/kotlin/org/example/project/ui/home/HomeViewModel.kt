@@ -95,10 +95,9 @@ class HomeViewModel : ViewModel() {
     private fun observeUserChanges() {
         viewModelScope.launch {
             UserSession.currentUserId.drop(1).collect { userId ->
-                // drop(1) skips the initial value so we only react to actual changes
-                println("👤 User changed to: $userId — resetting state")
 
-                // Stop everything tied to the old user
+                println("User changed to: $userId — resetting state")
+
                 stopTcpConnection()
                 gbaWatcher?.stop()
                 gbaWatcher = null
@@ -118,7 +117,6 @@ class HomeViewModel : ViewModel() {
                     partyLines = emptyList()
                 ) }
 
-                // Reload everything for the new user
                 runRepository.reloadForUser()
                 loadUserProfile()
                 loadPlayerRating()
@@ -138,13 +136,10 @@ class HomeViewModel : ViewModel() {
                         isLoading = false
                     ) }
                 } else {
-                    // No profile returned — could be no session, or row missing
-                    // Don't wipe existing username; just stop loading
                     _uiState.update { it.copy(isLoading = false) }
                 }
             } catch (e: Exception) {
-                println("⚠️ Failed to load profile: ${e.message}")
-                // Network/server error — keep whatever username we had
+                println("Failed to load profile: ${e.message}")
                 _uiState.update { it.copy(isLoading = false) }
             }
         }
@@ -158,15 +153,11 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             var lastRunId : String? = null
             runRepository.currentRun.collect { run ->
-
                 if (run?.id != lastRunId){
                     clearDeathTracking()
-                    lastRunId = run?.id
-                }
-
-                // Update activeRunFolder to match the current run
+                    lastRunId = run?.id }
                 activeRunFolder = run?.let { findRunFolderForRun(it) }
-                println("📁 activeRunFolder is now: ${activeRunFolder?.absolutePath}")
+                println("activeRunFolder is now: ${activeRunFolder?.absolutePath}")
 
                 if (run != null) {
                     val activeSav = FilePathProvider.getActiveSavFile()
@@ -185,15 +176,10 @@ class HomeViewModel : ViewModel() {
                         trainerName = "No run selected",
                         pokemonTeamIcons = emptyList(),
                         badges = "0/8",
-                        deaths = "0"
-                    ) }
-                }
-            }
-        }
+                        deaths = "0") } } } }
     }
 
     private fun findRunFolderForRun(run: PokemonRun): File? {
-        // Search the user-specific runs directory for the folder matching this run ID
         val runsDir = FilePathProvider.getRunsDirectory(run.gameVersion)
         if (!runsDir.exists()) return null
 
@@ -290,7 +276,7 @@ class HomeViewModel : ViewModel() {
                 val key = "${death.nickname}_${death.species}_${death.level}"
                 processedDeaths.add(key)
             }
-            println("📍 Baseline: ${snapshot.deaths.size} existing deaths recorded")
+            //println("Baseline: ${snapshot.deaths.size} existing deaths recorded")
         }
 
         val previousBadges = uiState.value.badges.substringBefore("/").toIntOrNull() ?: 0
@@ -307,7 +293,7 @@ class HomeViewModel : ViewModel() {
         }
 
         snapshot.encounters.forEach { (mapId, enc) ->
-            println("🗺️ Map $mapId: ${enc.species} - ${enc.status}")
+            println("Map $mapId: ${enc.species} - ${enc.status}")
         }
 
         val currentDeaths = snapshot.deaths.size
@@ -320,10 +306,9 @@ class HomeViewModel : ViewModel() {
             }
 
             if (newDeaths.isNotEmpty()) {
-                // Was this run "fresh" (no deaths processed yet) before this batch?
+
                 val wasFirstEverDeath = processedDeaths.isEmpty()
 
-                // Mark them processed
                 newDeaths.forEach { death ->
                     val key = "${death.nickname}_${death.species}_${death.level}"
                     processedDeaths.add(key)
@@ -435,7 +420,7 @@ class HomeViewModel : ViewModel() {
     private fun checkExistingRom() {
         val rom = FilePathProvider.getActiveRomFile()
         if (rom != null) {
-            println("🎮 ROM ready: ${rom.name}")
+            println("ROM ready: ${rom.name}")
 
             var foundFolder: File? = null
             var foundGame: GameVersion? = null
@@ -451,7 +436,7 @@ class HomeViewModel : ViewModel() {
 
             if (foundFolder != null && foundGame != null) {
                 val runIdFile = File(foundFolder, "runid.txt")
-                println("🔍 Auto-selected: ${foundGame.name}/${foundFolder.name}")
+                println("Auto-selected: ${foundGame.name}/${foundFolder.name}")
                 if (runIdFile.exists()) {
                     val runId = runIdFile.readText().trim()
                     val run = runRepository.allRuns.value.firstOrNull { it.id == runId }
@@ -480,7 +465,7 @@ class HomeViewModel : ViewModel() {
     fun switchGbaRun(gameVersion: GameVersion, targetFolderName: String) {
         val target = FilePathProvider.getRunFolder(gameVersion, targetFolderName)
         if (!target.exists()) {
-            println(" Target folder does not exist")
+            println("Target folder does not exist")
             return
         }
 
@@ -539,13 +524,11 @@ class HomeViewModel : ViewModel() {
     }
 
     fun createGbaRun(gameVersion: GameVersion, runName: String) {
-        println("🆕 createGbaRun called: $gameVersion $runName")
+        println("createGbaRun called: $gameVersion $runName")
         viewModelScope.launch(Dispatchers.IO) {
 
-            // Create the folder first
             GbaRunManager.createRunFolder(gameVersion, runName)
                 .onSuccess { folder ->
-                    // Use a placeholder save path - mGBA will create the actual save
                     val savePath = File(
                         FilePathProvider.getRomsDirectory(),
                         FilePathProvider.getActiveRomFile()?.nameWithoutExtension + ".sav"
@@ -591,7 +574,6 @@ class HomeViewModel : ViewModel() {
                 withContext(Dispatchers.Main) {
                     loadPlayerRating()
                 }
-
             }
 
             GbaRunManager.deleteRunFolder(runName, gameVersion)
@@ -712,10 +694,7 @@ class HomeViewModel : ViewModel() {
                         showMatchDialog = true
                     ) }
 
-                    // Open Showdown in the browser so the user can log in and play
                     BrowserLauncher.openUrl("http://localhost:8000/")
-
-                    // Start the bot — it will challenge the user's Showdown username
                     startShowdownMatch(match)
                 }
             } catch (e: Exception) {
@@ -773,7 +752,6 @@ class HomeViewModel : ViewModel() {
                     println("[SHOWDOWN] Match started in room: $roomId")
                     _uiState.update { it.copy(showdownRoomId = roomId) }
 
-                    // Optional: open the specific battle URL too, in case they're not already there
                     BrowserLauncher.openUrl("http://localhost:8000/$roomId")
                 },
                 onWin = { winner ->

@@ -1,8 +1,5 @@
 package org.example.project.data
 
-import kotlin.collections.get
-
-
 object FireRedTextDecoder {
     private val frCharset = mapOf(
         0x00 to " ",

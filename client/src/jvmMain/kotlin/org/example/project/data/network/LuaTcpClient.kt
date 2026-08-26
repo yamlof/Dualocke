@@ -15,7 +15,6 @@ import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.Socket
 import java.net.SocketException
-import kotlin.coroutines.cancellation.CancellationException
 
 class LuaTcpClient (
     private val host: String = "localhost",
@@ -49,12 +48,12 @@ class LuaTcpClient (
                         runId = runId,
                         onLine = onLine,
                         onSnapshot = onSnapshot,
-                        onConnected = onConnected,  // add this
+                        onConnected = onConnected,
                         onError = null
                     )
                     onDisconnected?.invoke()
                 } catch (e: Exception) {
-                    // connection failed, will retry
+
                 }
 
                 if (isActive) {
@@ -67,18 +66,11 @@ class LuaTcpClient (
         }
     }
 
-    /**
-     * Connect to the mGBA Lua script
-     * @param runId Optional run identifier to send to Lua
-     * @param onLine Callback for each line received (for raw display)
-     * @param onSnapshot Callback when a complete snapshot is parsed
-     * @param onError Callback for connection errors
-     */
     suspend fun connect(
         runId: String? = null,
         onLine: ((String) -> Unit)? = null,
         onSnapshot: ((NuzlockeSnapshot) -> Unit)? = null,
-        onConnected: (() -> Unit)? = null,  // add this
+        onConnected: (() -> Unit)? = null,
         onError: ((Exception) -> Unit)? = null
     ) = withContext(Dispatchers.IO) {
         try {
@@ -93,27 +85,23 @@ class LuaTcpClient (
             _connectionState.value = ConnectionState.CONNECTED
             println("[TCP] Connected successfully")
 
-            // Read greeting
             val greeting = reader?.readLine()
             println("[TCP] Server: $greeting")
 
-            onConnected?.invoke()  // notify that we're connected
+            onConnected?.invoke()
 
-            // Send HELLO with run ID if provided
             if (runId != null) {
                 sendMessage("HELLO:$runId")
             }
 
-            // Main read loop
             var currentSnapshot: MutableList<String>? = null
 
             while (isConnected && isActive) {
                 val line = reader?.readLine() ?: break
 
-                // Call raw line callback
+
                 onLine?.invoke(line)
 
-                // Parse snapshot protocol
                 when {
                     line == "SNAPSHOT_BEGIN" -> {
                         currentSnapshot = mutableListOf()
@@ -125,7 +113,6 @@ class LuaTcpClient (
                                 _latestSnapshot.value = snapshot
                                 onSnapshot?.invoke(snapshot)
 
-                                // Send ACK back to Lua
                                 sendMessage("ACK:${snapshot.sequence}")
                             } catch (e: Exception) {
                                 println("[TCP] Error parsing snapshot: ${e.message}")
@@ -147,8 +134,7 @@ class LuaTcpClient (
                         currentSnapshot.add(line)
                     }
                     else -> {
-                        // Other messages (key presses, etc.)
-                        // Already handled by onLine callback
+
                     }
                 }
             }
@@ -166,9 +152,6 @@ class LuaTcpClient (
         }
     }
 
-    /**
-     * Parse a snapshot from the Lua script
-     */
     private fun parseSnapshot(lines: List<String>): NuzlockeSnapshot {
         var sequence = 0
         var frameCount = 0
@@ -179,21 +162,16 @@ class LuaTcpClient (
         val deaths = mutableListOf<Death>()
         val encounters = mutableMapOf<Int, EncounterInfo>()
 
-
         for (line in lines) {
             when {
                 line.startsWith("SEQ:") -> {
-                    sequence = line.substringAfter("SEQ:").toIntOrNull() ?: 0
-                }
+                    sequence = line.substringAfter("SEQ:").toIntOrNull() ?: 0 }
                 line.startsWith("FRAME:") -> {
-                    frameCount = line.substringAfter("FRAME:").toIntOrNull() ?: 0
-                }
+                    frameCount = line.substringAfter("FRAME:").toIntOrNull() ?: 0 }
                 line.startsWith("MAP:") -> {
-                    mapId = line.substringAfter("MAP:").toIntOrNull() ?: 0
-                }
+                    mapId = line.substringAfter("MAP:").toIntOrNull() ?: 0 }
                 line.startsWith("BADGES:") -> {
-                    badges = line.substringAfter("BADGES:").toIntOrNull() ?: 0
-                }
+                    badges = line.substringAfter("BADGES:").toIntOrNull() ?: 0 }
                 line.startsWith("MON:") -> {
                     // Format: MON:1|CHARIZARD|Charizard|36|89|120
                     val parts = line.substringAfter("MON:").split("|")
@@ -204,10 +182,7 @@ class LuaTcpClient (
                             species = parts[2],
                             level = parts[3].toIntOrNull() ?: 0,
                             hp = parts[4].toIntOrNull() ?: 0,
-                            maxHp = parts[5].toIntOrNull() ?: 0
-                        ))
-                    }
-                }
+                            maxHp = parts[5].toIntOrNull() ?: 0)) } }
                 line.startsWith("DEAD|") -> {
                     // Format: DEAD|PIDGEOT|Pidgeot|42|15|123456
                     val parts = line.substringAfter("DEAD|").split("|")
@@ -217,10 +192,7 @@ class LuaTcpClient (
                             species = parts[1],
                             level = parts[2].toIntOrNull() ?: 0,
                             location = parts[3].toIntOrNull() ?: 0,
-                            frameCount = parts[4].toLongOrNull() ?: 0
-                        ))
-                    }
-                }
+                            frameCount = parts[4].toLongOrNull() ?: 0)) } }
                 line.startsWith("ENCV2|") -> {
                     // Format: ENC|15|Pidgey
                     val parts = line.substringAfter("ENCV2|").split("|")
@@ -232,16 +204,9 @@ class LuaTcpClient (
                         encounters[encMapId] = EncounterInfo(
                             species = species,
                             nickname = nickname,
-                            status = status
-                        )
-                    }
-
-                }
+                            status = status) } }
                 line.startsWith("CHECKSUM:") -> {
-                    checksum = line.substringAfter("CHECKSUM:").toLongOrNull()
-                }
-            }
-        }
+                    checksum = line.substringAfter("CHECKSUM:").toLongOrNull() } } }
 
         return NuzlockeSnapshot(
             sequence = sequence,
@@ -256,9 +221,6 @@ class LuaTcpClient (
         )
     }
 
-    /**
-     * Send a message to the Lua script
-     */
     fun sendMessage(message: String) {
         try {
             writer?.println(message)
@@ -269,16 +231,6 @@ class LuaTcpClient (
         }
     }
 
-    /**
-     * Send a ping to check connection
-     */
-    fun ping() {
-        sendMessage("PING")
-    }
-
-    /**
-     * Disconnect from the server
-     */
     fun disconnect() {
         isConnected = false
         try {
@@ -295,9 +247,7 @@ class LuaTcpClient (
             _connectionState.value = ConnectionState.DISCONNECTED
         }
     }
-
 }
-
 
 enum class ConnectionState {
     DISCONNECTED,
@@ -306,9 +256,6 @@ enum class ConnectionState {
     ERROR
 }
 
-/**
- * Complete snapshot from the Nuzlocke tracker
- */
 data class NuzlockeSnapshot(
     val sequence: Int,
     val frameCount: Int,
@@ -321,9 +268,6 @@ data class NuzlockeSnapshot(
     val checksum: Long?
 )
 
-/**
- * Party Pokemon
- */
 data class PartyMon(
     val position: Int,
     val nickname: String,
@@ -336,9 +280,6 @@ data class PartyMon(
     val hpPercent: Float get() = if (maxHp > 0) (hp.toFloat() / maxHp) else 0f
 }
 
-/**
- * Death record
- */
 data class Death(
     val nickname: String,
     val species: String,
@@ -350,7 +291,7 @@ data class Death(
 data class EncounterInfo(
     val species: String,
     val nickname: String? = null,
-    val status: String  // "in_battle", "caught", "failed", "none"
+    val status: String
 ) {
     val isCaught get() = status == "caught"
     val isFailed get() = status == "failed"

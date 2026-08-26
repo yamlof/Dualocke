@@ -34,13 +34,10 @@ object GbaValidator {
             val header = ByteArray(192)
             file.inputStream().use { it.read(header) }
 
-            // Log the first byte to see what we're getting
-            println("🔍 First byte: 0x${header[0].toInt().and(0xFF).toString(16)}")
+            //println("First byte: 0x${header[0].toInt().and(0xFF).toString(16)}")
 
-            // Skip entry point check, just validate game title
             val titleBytes = header.copyOfRange(0xA0, 0xAC)
             val gameTitle = String(titleBytes, Charsets.US_ASCII).trimEnd('\u0000').trim()
-            println("🔍 Game title from header: '$gameTitle'")
 
             val gameVersion = KNOWN_HEADERS.entries
                 .firstOrNull { gameTitle.startsWith(it.key) }

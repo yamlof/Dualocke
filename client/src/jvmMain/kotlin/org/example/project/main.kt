@@ -26,8 +26,6 @@ object RegisterScreenDestination
 @Serializable
 object HomeScreenDestination
 
-// Data classes for matchmaking
-
 @Serializable
 data class MatchQueueInsert(
    val player_id: String,

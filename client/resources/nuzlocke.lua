@@ -1,10 +1,3 @@
--- ============================================================
--- Nuzlocke Tracker for mGBA
--- Extends party reading with death detection, encounter
--- tracking, badge progress, and tamper-evident snapshots.
--- Communicates over TCP socket (default port 8888).
--- ============================================================
-
 local Game = {
 	new = function (self, game)
 		self.__index = self
@@ -58,17 +51,9 @@ function Game.getSpeciesName(game, id)
 	return game:toString(emu.memory.cart0:readRange(pointer, game._monNameLength))
 end
 
--- ── Badge reading ─────────────────────────────────────────────────────────────
-
--- Returns an 8-bit integer; each bit = one badge earned.
--- Gen 1 (RBY): 0xD356  Gen 2 (GS): 0xD57C / Crystal 0xD57C
--- Gen 3 badge bytes differ per game and are set per-game below.
--- Helper to check a flag from saveblock1
 local function FlagGet(flagId)
     local saveBlock1 = emu:read32(0x03005008)
     if saveBlock1 == 0 then return false end
-    -- Flags array starts at offset 0xEE0 in saveblock1 for FireRed
-    -- Each flag is 1 bit: byte = flagId >> 3, bit = flagId & 7
     local byte = emu:read8(saveBlock1 + 0xEE0 + (flagId >> 3))
     return ((byte >> (flagId & 7)) & 1) == 1
 end
@@ -77,7 +62,6 @@ function Game.getBadges(game)
     if not game._badgeAddress then return 0 end
 
     if game._badgeAddress == true then
-        -- FireRed badge flags: 0x820 to 0x827
         local count = 0
         for flagId = 0x820, 0x827 do
             if FlagGet(flagId) then
@@ -184,15 +168,6 @@ local function getMapName(mapId)
     return MAP_NAMES[mapId] or string.format("Unknown (%d:%d)", mapId >> 8, mapId & 0xFF)
 end
 
--- ── Route / Map detection ─────────────────────────────────────────────────────
-
--- Returns the current map/location ID as a number.
--- The address and width differ per generation:
---   Gen1: 1 byte at _mapAddress
---   Gen2: 1 byte at _mapAddress
---   Gen3: 2 bytes (little-endian) at _mapAddress (bank<<8|map or map16)
--- Fix map reading using DMA pointer
-
 function Game.getMapId(game)
     if not game._mapAddress then return 0 end
 
@@ -208,12 +183,8 @@ function Game.getMapId(game)
     return emu:read8(game._mapAddress)
 end
 
--- ── Checksum (simple, tamper-evident) ────────────────────────────────────────
-
--- XOR-fold all bytes of a string into a single 32-bit value.
--- Kotlin must reproduce this identically for snapshot validation.
 local function simpleChecksum(s)
-	local h = 0x811c9dc5  -- FNV offset basis
+	local h = 0x811c9dc5
 	for i = 1, #s do
 		h = ((h ~ s:byte(i)) * 0x01000193) & 0xFFFFFFFF
 	end
@@ -221,7 +192,7 @@ local function simpleChecksum(s)
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- Character maps (unchanged from original)
+-- Character maps
 -- ═══════════════════════════════════════════════════════════════
 
 local GBGameEn = Game:new{
@@ -292,7 +263,7 @@ GBAGameEn._charmap = { [0]=
 }
 
 -- ═══════════════════════════════════════════════════════════════
--- Mon readers (unchanged from original)
+-- Mon readers
 -- ═══════════════════════════════════════════════════════════════
 
 function _read16BE(emu, address)
@@ -494,14 +465,14 @@ function Generation3En._readPartyMon(game, address)
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- Game definitions  (badge + map addresses added)
+-- Game definitions
 -- ═══════════════════════════════════════════════════════════════
 
 local gameRBEn = Generation1En:new{
 	name="Red/Blue (USA)",
 	_party=0xd16b, _partyCount=0xd163, _partyNames=0xd2b5, _partyOt=0xd273,
 	_speciesNameTable=0x1c21e, _speciesIndex=0x41024,
-	_badgeAddress=0xD356,  -- Kanto badge bitfield
+	_badgeAddress=0xD356,
 	_mapAddress=0xD35E,
 }
 
@@ -517,7 +488,7 @@ local gameGSEn = Generation2En:new{
 	name="Gold/Silver (USA)",
 	_party=0xda2a, _partyCount=0xda22, _partyNames=0xdb8c, _partyOt=0xdb4a,
 	_speciesNameTable=0x1b0b6a,
-	_badgeAddress=0xD57C,  -- Johto badges; Kanto at 0xD57D
+	_badgeAddress=0xD57C,
 	_mapAddress=0xDCB5,
 }
 
@@ -532,7 +503,7 @@ local gameCrystalEn = Generation2En:new{
 local gameRubyEn = Generation3En:new{
 	name="Ruby (USA)",
 	_party=0x3004360, _partyCount=0x3004350, _speciesNameTable=0x1f716c,
-	_badgeAddress=0x20257C8,  -- Hoenn badges byte
+	_badgeAddress=0x20257C8,
 	_mapAddress=0x3004F00, _mapIs16=true,
 }
 
@@ -563,7 +534,7 @@ local gameEmeraldEn = Generation3En:new{
 local gameFireRedEn = Generation3En:new{
     name="FireRed (USA)",
     _party=0x2024284, _partyCount=0x2024029, _speciesNameTable=0x245ee0,
-    _badgeAddress=true,  -- signals to use DMA pointer method
+    _badgeAddress=true,
     _mapAddress=true, _mapIs16=false,
 }
 
@@ -613,24 +584,23 @@ local gameCrc32 = {
 -- ═══════════════════════════════════════════════════════════════
 
 local nuzlocke = {
-	-- map_id -> species name of first mon encountered (locked in)
+
 	encounters  = {},
-	-- list of {nickname, species, level, location, frameCount}
+
 	deathLog    = {},
-	-- previous party snapshot for death detection (keyed by otId+nickname)
+
 	prevParty   = {},
 	prevBadges  = 0,
 	frameCount  = 0,
-	runId       = nil,   -- assigned by Kotlin on HELLO handshake
+	runId       = nil,
 	snapshotSeq = 0,
 }
 
--- Stable key for a party mon (otId makes it robust across nickname changes)
+
 local function monKey(mon)
 	return string.format("%d:%s", mon.otId, mon.nickname)
 end
 
--- Detect deaths: mons present last frame with hp>0 now gone or hp==0
 local function detectDeaths(party, mapId)
 	local currentKeys = {}
 	for _, mon in ipairs(party) do
@@ -649,19 +619,12 @@ local function detectDeaths(party, mapId)
 				mon.nickname, mon.speciesName, mon.level, mapId))
 		end
 	end
-	-- Detect hard-removes (mon left party entirely while at 0 hp from prev frame)
-	for k, prev in pairs(nuzlocke.prevParty) do
-		if not currentKeys[k] and prev.hp == 0 then
-			-- already logged when hp hit 0; no double-log needed
-		end
-	end
 end
 
--- Track first encounter on a new map
+
 local function trackEncounter(party, mapId)
     if nuzlocke.encounters[mapId] then return end
-    -- Heuristic: if the party just gained a mon whose metLocation == mapId, that's the encounter.
-    -- For Gen3 we have metLocation directly. For Gen1/2 we approximate.
+
     for _, mon in ipairs(party) do
         local meta = mon.metLocation
         if meta and meta == mapId and not nuzlocke.prevParty[monKey(mon)] then
@@ -676,17 +639,14 @@ end
 
 local ENCOUNTER_STATUS = {
     NONE = "none",
-    IN_BATTLE = "in_battle",   -- currently in a wild battle on this route
-    CAUGHT = "caught",          -- successfully caught
-    FAILED = "failed"           -- ran away, fainted, or used no balls
+    IN_BATTLE = "in_battle",
+    CAUGHT = "caught",
+    FAILED = "failed"
 }
 
--- Track encounter state per map
--- encounters[mapId] = { status, species, nickname }
+
 nuzlocke.encounterStatus = {}
 
--- Detect if we're in a wild battle
--- In Gen 3, battle type is at a known address
 local function isInWildBattle()
     local battleFlags = emu:read32(0x02022B4C)
     local battleType = emu:read16(0x020386AC)
@@ -725,7 +685,6 @@ local function updateEncounterTracking(party, mapId)
 
         console:log(string.format("[POKEDEX] hasPokedex: %s", tostring(hasPokedex())))
 
-        -- Save party snapshot at battle start
         partyAtBattleStart = {}
         for _, mon in ipairs(party) do
             partyAtBattleStart[monKey(mon)] = true
@@ -742,10 +701,9 @@ local function updateEncounterTracking(party, mapId)
             return
         end
 
-        -- Gate encounter recording on Pokedex possession
         if not hasPokedex() then
-            console:log("[ENCOUNTER] No Pokedex yet — not recording encounter")
-            battleStartMap = nil  -- don't try to update status when battle ends either
+            console:log("[ENCOUNTER] No Pokedex yet ,not recording encounter")
+            battleStartMap = nil
             prevInBattle = inBattle
             return
         end
@@ -805,8 +763,6 @@ end
 -- Message formatting
 -- ═══════════════════════════════════════════════════════════════
 
--- Build the canonical snapshot string that BOTH Lua and Kotlin hash.
--- Format is deterministic and newline-delimited so Kotlin can parse easily.
 local function buildSnapshotPayload(party, badges, mapId)
 	nuzlocke.snapshotSeq = nuzlocke.snapshotSeq + 1
 	local lines = {}
@@ -879,10 +835,10 @@ function detectGame()
 		console:error("Unknown game!")
 	else
 		console:log("Found game: " .. game.name)
-		if not partyBuffer then
-			partyBuffer = console:createBuffer("Party")
-		end
-		-- Reset nuzlocke state on new game detection
+        if not partyBuffer then
+            partyBuffer = console:createBuffer("Party")
+        end
+
 		nuzlocke.encounters  = {}
 		nuzlocke.deathLog    = {}
 		nuzlocke.prevParty   = {}
@@ -892,8 +848,8 @@ function detectGame()
 	end
 end
 
--- Frame throttle: send a full snapshot every N frames to avoid flooding
-local SNAPSHOT_EVERY = 60  -- ~1 second at 60fps
+
+local SNAPSHOT_EVERY = 60
 local framesSinceSnapshot = 0
 
 local function toBinary(num)
@@ -906,17 +862,14 @@ local function toBinary(num)
 end
 
 local function hasPokeballs()
-    -- Bag pocket 0 is items, pocket 1 is pokeballs
-    -- Pokeball item ID is 0x001 (4 in decimal)
     local bagBase = emu:read32(0x03005008) + 0x560
-    local ballPocketCount = emu:read16(bagBase + 0x640) -- ball pocket item count
+    local ballPocketCount = emu:read16(bagBase + 0x640)
     return ballPocketCount > 0
 end
 
 function hasPokedex()
-    return FlagGet(0x829)  -- "Got Pokedex" flag in FireRed
+    return FlagGet(0x829)
 end
-
 
 function updateBuffer()
 	if not game or not partyBuffer then return end
@@ -928,15 +881,13 @@ function updateBuffer()
 	local mapId    = game:getMapId()
 	local badges   = game:getBadges()
 
-	-- Annotate each mon with its resolved species name once
-	for _, mon in ipairs(party) do
-		mon.speciesName = game:getSpeciesName(mon.species)
-	end
+    for _, mon in ipairs(party) do
+        mon.speciesName = game:getSpeciesName(mon.species)
+    end
 
 	-- Nuzlocke logic (runs every frame for accuracy)
     detectDeaths(party, mapId)
-    updateEncounterTracking(party, mapId)  -- replace trackEncounter with this
-
+    updateEncounterTracking(party, mapId)
 
     -- Badge gain notification
 
@@ -948,16 +899,14 @@ function updateBuffer()
         ))
         nuzlocke.prevBadges = badges
 
-        -- Send immediate snapshot on badge gain
+        -- Send snapshot on badge gain
         local msg = buildFullMessage(party, badges, mapId)
         for id, sock in pairs(ST_sockets) do
             if sock then sock:send(msg) end
         end
-        framesSinceSnapshot = 0  -- reset throttle
+        framesSinceSnapshot = 0
         console:log("[NUZLOCKE] Immediate snapshot sent for badge gain")
     end
-
-
 
 	-- Build prevParty map for next frame
 	nuzlocke.prevParty = {}
@@ -983,7 +932,7 @@ callbacks:add("frame", updateBuffer)
 if emu then detectGame() end
 
 -- ═══════════════════════════════════════════════════════════════
--- Socket server (original, extended)
+-- Socket server
 -- ═══════════════════════════════════════════════════════════════
 
 lastkeys  = nil
@@ -1011,12 +960,8 @@ function ST_error(id, err)
 	ST_stop(id)
 end
 
--- Handle incoming messages from Kotlin
--- Supported: HELLO:<runId>   -> registers run ID
---            ACK:<seq>       -> Kotlin confirmed snapshot seq
---            PING            -> respond PONG
 function ST_handleMessage(id, msg)
-	msg = msg:match("^(.-)%s*$")  -- trim
+	msg = msg:match("^(.-)%s*$")
 	if msg:sub(1, 6) == "HELLO:" then
 		nuzlocke.runId = msg:sub(7)
 		console:log("[NUZLOCKE] Run ID set: " .. nuzlocke.runId)
@@ -1078,7 +1023,6 @@ function ST_accept()
 	sock:add("received", function() ST_received(id) end)
 	sock:add("error",    function() ST_error(id) end)
 	console:log(ST_format(id, "Connected"))
-	-- Send a greeting so Kotlin knows the protocol version
 	sock:send("NUZLOCKE_TRACKER v1\n")
 end
 

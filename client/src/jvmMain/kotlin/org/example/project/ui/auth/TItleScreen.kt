@@ -41,7 +41,7 @@ fun TitleScreen(
 
         val bitmap = remember {
             val file =
-                File("/Users/edwinigbinoba/Documents/code/True-Dualocke/client/resources/kanto.png")
+                File("client/resources/kanto.png")
             org.jetbrains.skia.Image.makeFromEncoded(file.readBytes()).toComposeImageBitmap()
         }
 
@@ -107,7 +107,7 @@ fun TitleScreen(
 @Composable
 fun AuthBackground(content: @Composable BoxScope.() -> Unit) {
     val bitmap = remember {
-        val file = File("/Users/edwinigbinoba/Documents/code/True-Dualocke/client/resources/kanto.png")
+        val file = File("client/resources/kanto.png")
         org.jetbrains.skia.Image.makeFromEncoded(file.readBytes()).toComposeImageBitmap()
     }
 

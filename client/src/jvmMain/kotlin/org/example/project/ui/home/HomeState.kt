@@ -2,7 +2,7 @@ package org.example.project.ui.home
 
 import org.example.project.LeaderboardEntry
 import org.example.project.Match
-import org.example.project.data.network.NuzlockeSnapshot
+import  org.example.project.data.network.NuzlockeSnapshot
 import org.example.project.domain.models.GameVersion
 
 data class HomeUiState(

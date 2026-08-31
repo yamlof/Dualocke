@@ -335,9 +335,8 @@ class RunRepository (
     fun reloadForUser() {
         val newPath = FilePathProvider.getRunsConfigPath()
         println("🔄 reloadForUser path: $newPath")
-        println("🔄 File exists: ${File(newPath).exists()}")
-        println("🔄 File content: ${File(newPath).readText()}")
         val configFile = File(newPath)
+        println("🔄 File exists: ${configFile.exists()}")
         if (configFile.exists()) {
             try {
                 val jsonString = configFile.readText()
